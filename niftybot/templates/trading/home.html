@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - NIFTY Trading Bot{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container text-center">
+        <h1 class="display-4 mb-4">
+            <i class="fas fa-chart-line"></i> NIFTY Trading Bot
+        </h1>
+        <p class="lead mb-4">
+            Automated Algorithmic Trading Platform for NIFTY Weekly Options
+        </p>
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <p class="mb-4">
+                    Professional-grade automated trading system running the Hedged Short Strangle strategy 
+                    on NIFTY weekly options with built-in risk management and real-time monitoring.
+                </p>
+                {% if not user.is_authenticated %}
+                    <div class="mt-4">
+                        <a href="{% url 'signup' %}" class="btn btn-light btn-lg mx-2">
+                            <i class="fas fa-user-plus"></i> Get Started
+                        </a>
+                        <a href="{% url 'login' %}" class="btn btn-outline-light btn-lg mx-2">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="mt-4">
+                        <a href="{% url 'dashboard' %}" class="btn btn-light btn-lg mx-2">
+                            <i class="fas fa-tachometer-alt"></i> Go to Dashboard
+                        </a>
+                        <a href="{% url 'algorithms' %}" class="btn btn-outline-light btn-lg mx-2">
+                            <i class="fas fa-robot"></i> Run Algorithms
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4 mb-4">
+        <div class="stat-card">
+            <i class="fas fa-robot fa-3x mb-3 text-primary"></i>
+            <h3>Automated Trading</h3>
+            <p class="text-muted">
+                Fully automated execution of the Hedged Short Strangle strategy. 
+                No manual intervention required.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="stat-card">
+            <i class="fas fa-shield-alt fa-3x mb-3 text-success"></i>
+            <h3>Risk Management</h3>
+            <p class="text-muted">
+                Built-in hedging, stop losses, and position sizing to protect your capital.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="stat-card">
+            <i class="fas fa-chart-bar fa-3x mb-3 text-info"></i>
+            <h3>Real-time Monitoring</h3>
+            <p class="text-muted">
+                Live P&L tracking, position monitoring, and comprehensive performance analytics.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-info-circle"></i> About the Strategy</h4>
+            </div>
+            <div class="card-body">
+                <h5>Hedged Short Strangle Strategy</h5>
+                <p>
+                    This strategy involves selling out-of-the-money call and put options while 
+                    buying further out-of-the-money options as hedges. The goal is to profit from 
+                    time decay while limiting risk through strategic hedging.
+                </p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-check-circle text-success"></i> Key Features:</h6>
+                        <ul>
+                            <li>Weekly options trading on NIFTY</li>
+                            <li>Automatic entry at 9:21 AM IST</li>
+                            <li>Defensive position adjustments</li>
+                            <li>Auto-exit at 3:00 PM IST or target hit</li>
+                            <li>No trading on Tuesdays or expiry days</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-cogs text-primary"></i> Technical Details:</h6>
+                        <ul>
+                            <li>Version: v9.8.3-fixed-v5</li>
+                            <li>Entry Window: 09:21:00 - 09:21:30 IST</li>
+                            <li>Lot Size: 65 (NIFTY)</li>
+                            <li>Max Lots: 5</li>
+                            <li>Expected Returns: 1-2% weekly</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-play-circle"></i> Getting Started</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="step-number">1</div>
+                        <h5>Sign Up</h5>
+                        <p class="text-muted">Create your account</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="step-number">2</div>
+                        <h5>Connect Broker</h5>
+                        <p class="text-muted">Add Zerodha credentials</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="step-number">3</div>
+                        <h5>Configure</h5>
+                        <p class="text-muted">Set your preferences</p>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <div class="step-number">4</div>
+                        <h5>Start Trading</h5>
+                        <p class="text-muted">Enable the algorithm</p>
+                    </div>
+                </div>
+                
+                {% if not user.is_authenticated %}
+                    <div class="text-center mt-4">
+                        <a href="{% url 'signup' %}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-rocket"></i> Start Your Journey
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .step-number {
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #3498db 0%, #2c3e50 100%);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 auto 15px;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,677 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Trade with Naman{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --bg: #0d1117;
+        --card-bg: rgba(22, 27, 34, 0.82);
+        --card-border: rgba(88, 101, 242, 0.18);
+        --text: #e6edf3;
+        --text-muted: #8b949e;
+        --primary: #58a6ff;
+        --success: #3fb950;
+        --danger: #f85149;
+        --warning: #d29922;
+        --glow-success: rgba(63, 185, 80, 0.45);
+        --glow-danger: rgba(248, 81, 73, 0.45);
+
+        /* Brighter, flowing trading colors */
+        --line-green: rgba(63, 185, 80, 0.85);
+        --line-red:   rgba(248, 81, 73, 0.85);
+        --candle-green: #34d399;
+        --candle-red:   #ff6b6b;
+    }
+
+    body {
+        background: var(--bg);
+        color: var(--text);
+        overflow-x: hidden;
+        position: relative;
+        min-height: 100vh;
+    }
+
+    /* ─── Improved Seamless Flowing Stock Market Background ─── */
+    .trading-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: -2;
+        overflow: hidden;
+        background: #0d1117;
+    }
+
+    .trading-bg::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to bottom, 
+            rgba(13,17,23,0.92) 0%, 
+            rgba(13,17,23,0.55) 50%, 
+            rgba(13,17,23,0.88) 100%);
+        z-index: 2;
+    }
+
+    /* Seamless flowing price lines */
+    .market-flow {
+        position: absolute;
+        width: 200%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        animation: flowRight 60s linear infinite;
+    }
+
+    .flow-line {
+        position: relative;
+        height: 2.4px;
+        background: linear-gradient(90deg, 
+            transparent 0%, 
+            var(--line-green) 25%, 
+            #a5f3c0 45%, 
+            var(--line-red) 55%, 
+            #ff9999 75%, 
+            transparent 100%);
+        filter: blur(0.8px);
+        opacity: 0.7;
+        box-shadow: 
+            0 0 12px rgba(63, 185, 80, 0.55),
+            0 0 22px rgba(248, 81, 73, 0.45);
+    }
+
+    .flow-red {
+        background: linear-gradient(90deg, 
+            transparent 0%, 
+            var(--line-red) 25%, 
+            #ff9999 45%, 
+            var(--line-green) 55%, 
+            #a5f3c0 75%, 
+            transparent 100%);
+        box-shadow: 
+            0 0 12px rgba(248, 81, 73, 0.55),
+            0 0 22px rgba(63, 185, 80, 0.45);
+    }
+
+    /* Individual positions and zigzag speeds */
+    .flow-1 { top: 12%; animation: zigzagFlow 18s ease-in-out infinite alternate; }
+    .flow-2 { top: 28%; animation: zigzagFlow 22s ease-in-out infinite alternate; }
+    .flow-3 { top: 44%; animation: zigzagFlow 26s ease-in-out infinite alternate; }
+    .flow-4 { top: 62%; animation: zigzagFlow 20s ease-in-out infinite alternate; }
+    .flow-5 { top: 79%; animation: zigzagFlow 24s ease-in-out infinite alternate; }
+
+    @keyframes flowRight {
+        0%   { transform: translateX(0%);    }
+        100% { transform: translateX(-50%);  }
+    }
+
+    @keyframes zigzagFlow {
+        0%, 100%  { transform: translateY(0) scaleY(1);   }
+        25%       { transform: translateY(-14px) scaleY(1.07); }
+        50%       { transform: translateY(0) scaleY(1);   }
+        75%       { transform: translateY(14px) scaleY(1.07); }
+    }
+
+    /* Continuous drifting candlesticks */
+    .candles-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+    }
+
+    .candle-group {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        animation: candleDrift 75s linear infinite;
+    }
+
+    .candle {
+        position: absolute;
+        width: 3.2px;
+        border-radius: 1.6px;
+        opacity: 0.6;
+        box-shadow: 0 0 10px currentColor;
+        animation: candleFlicker 7s infinite alternate;
+    }
+
+    .candle-green { background: var(--candle-green); }
+    .candle-red   { background: var(--candle-red);   }
+
+    /* Group 1 candles */
+    .group-1 .candle-1  { left: 8%;  height: 18%; top: 15%; animation-delay: 0s;    }
+    .group-1 .candle-2  { left: 17%; height: 32%; top: 38%; animation-delay: -3s;  }
+    .group-1 .candle-3  { left: 25%; height: 14%; top: 65%; animation-delay: -6s;  }
+    .group-1 .candle-4  { left: 34%; height: 36%; top: 10%; animation-delay: -9s;  }
+    .group-1 .candle-5  { left: 43%; height: 22%; top: 55%; animation-delay: -1.5s;}
+
+    /* Group 2 candles — offset for continuity */
+    .group-2 .candle-1  { left: 12%; height: 26%; top: 22%; }
+    .group-2 .candle-2  { left: 21%; height: 19%; top: 48%; }
+    .group-2 .candle-3  { left: 29%; height: 33%; top: 18%; }
+    .group-2 .candle-4  { left: 38%; height: 24%; top: 62%; }
+    .group-2 .candle-5  { left: 47%; height: 29%; top: 32%; }
+
+    @keyframes candleDrift {
+        0%   { transform: translateX(-120%); }
+        100% { transform: translateX(120%);  }
+    }
+
+    @keyframes candleFlicker {
+        0%, 100% { opacity: 0.55; transform: scaleY(1);   }
+        40%      { opacity: 0.90; transform: scaleY(1.12); }
+        70%      { opacity: 0.65; transform: scaleY(0.96); }
+    }
+
+    /* ─── Original dashboard content styles (unchanged) ─── */
+    .dashboard-content {
+        position: relative;
+        z-index: 3;
+        padding-top: 2rem;
+    }
+
+    h1 {
+        color: var(--primary);
+        text-shadow: 0 2px 12px rgba(88,166,255,0.28);
+    }
+
+    .fade-in-up {
+        opacity: 0;
+        transform: translateY(25px);
+        animation: fadeUp 0.9s ease-out forwards;
+    }
+
+    @keyframes fadeUp {
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .stat-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 1.6rem;
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+        animation: fadeUp 1s ease-out forwards;
+        opacity: 0;
+        animation-delay: calc(var(--delay) * 0.18s);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+
+    .stat-card .value {
+        font-size: 2.1rem;
+        font-weight: 800;
+        margin-bottom: 0.6rem;
+        letter-spacing: -0.5px;
+    }
+
+    .stat-card .label {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .status-running {
+        color: var(--success);
+        animation: pulseGlow 2.2s infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+        from { text-shadow: 0 0 10px var(--glow-success); }
+        to   { text-shadow: 0 0 24px var(--glow-success); }
+    }
+
+    .profit {
+        color: var(--success) !important;
+    }
+
+    .loss {
+        color: var(--danger) !important;
+    }
+
+    .card {
+        background: var(--card-bg);
+        backdrop-filter: blur(14px);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        transition: all 0.45s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, #161b22, #21262d);
+        border-bottom: none;
+        padding: 1.25rem 1.5rem;
+        color: var(--text);
+        font-weight: 600;
+    }
+
+    .btn-lg {
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        border-radius: 10px;
+        transition: all 0.35s ease;
+    }
+
+    .btn-success {
+        background: var(--success);
+        border: none;
+    }
+
+    .btn-danger {
+        background: var(--danger);
+        border: none;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+
+    .table-hover tbody tr:hover {
+        background: rgba(88, 166, 255, 0.08);
+        transform: scale(1.005);
+    }
+
+    .quick-nav .btn {
+        height: 60px;
+        font-size: 1.05rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        border-radius: 12px;
+        transition: all 0.4s ease;
+    }
+
+    .quick-nav .btn:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.25);
+    }
+
+    /* Staggered animations */
+    .stat-card:nth-child(1) { animation-delay: 0.2s; }
+    .stat-card:nth-child(2) { animation-delay: 0.35s; }
+    .stat-card:nth-child(3) { animation-delay: 0.5s; }
+    .stat-card:nth-child(4) { animation-delay: 0.65s; }
+
+    .card:first-of-type  { animation-delay: 0.8s; }
+    .card:last-of-type   { animation-delay: 0.95s; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Improved seamless flowing background -->
+<div class="trading-bg">
+    <!-- Flowing price lines (duplicated for seamless loop) -->
+    <div class="market-flow">
+        <div class="flow-line flow-1"></div>
+        <div class="flow-line flow-2 flow-red"></div>
+        <div class="flow-line flow-3"></div>
+        <div class="flow-line flow-4 flow-red"></div>
+        <div class="flow-line flow-5"></div>
+
+        <!-- Duplicate set for perfect seamless looping -->
+        <div class="flow-line flow-1"></div>
+        <div class="flow-line flow-2 flow-red"></div>
+        <div class="flow-line flow-3"></div>
+        <div class="flow-line flow-4 flow-red"></div>
+        <div class="flow-line flow-5"></div>
+    </div>
+
+    <!-- Continuous candlesticks -->
+    <div class="candles-layer">
+        <div class="candle-group group-1">
+            <div class="candle candle-green candle-1"></div>
+            <div class="candle candle-red candle-2"></div>
+            <div class="candle candle-green candle-3"></div>
+            <div class="candle candle-red candle-4"></div>
+            <div class="candle candle-green candle-5"></div>
+        </div>
+        <div class="candle-group group-2" style="animation-delay: -37.5s;">
+            <div class="candle candle-green candle-1"></div>
+            <div class="candle candle-red candle-2"></div>
+            <div class="candle candle-green candle-3"></div>
+            <div class="candle candle-red candle-4"></div>
+            <div class="candle candle-green candle-5"></div>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-content">
+    <div class="row">
+        <div class="col-md-12">
+            <h1 class="mb-5 fade-in-up"><i class="fas fa-tachometer-alt me-3"></i> Trading Dashboard</h1>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row g-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="value">
+                    {% if bot_status.is_running %}
+                        <i class="fas fa-play-circle text-success status-running me-2"></i>
+                        Running
+                    {% else %}
+                        <i class="fas fa-stop-circle text-danger me-2"></i>
+                        Stopped
+                    {% endif %}
+                </div>
+                <div class="label">Bot Status</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="value {% if daily_pnl.pnl >= 0 %}profit{% else %}loss{% endif %}" data-countup="{{ daily_pnl.pnl|default:0 }}">
+                    ₹{{ daily_pnl.pnl|default:0|floatformat:2 }}
+                </div>
+                <div class="label">Today's P&L</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="value {% if weekly_pnl >= 0 %}profit{% else %}loss{% endif %}" data-countup="{{ weekly_pnl|default:0 }}">
+                    ₹{{ weekly_pnl|floatformat:2 }}
+                </div>
+                <div class="label">Weekly P&L</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="value {% if monthly_pnl >= 0 %}profit{% else %}loss{% endif %}" data-countup="{{ monthly_pnl|default:0 }}">
+                    ₹{{ monthly_pnl|floatformat:2 }}
+                </div>
+                <div class="label">Monthly P&L</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bot Control & Performance -->
+    <div class="row mt-5 g-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-robot me-2"></i> Bot Control Panel</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Current Status</h6>
+                            <p><strong>Status:</strong> 
+                                {% if bot_status.is_running %}
+                                    <span class="status-running"><i class="fas fa-play-circle me-1"></i> RUNNING</span>
+                                {% else %}
+                                    <span class="text-danger"><i class="fas fa-stop-circle me-1"></i> STOPPED</span>
+                                {% endif %}
+                            </p>
+                            <p><strong>Last Started:</strong> 
+                                {% if bot_status.last_started %}
+                                    {{ bot_status.last_started|date:"Y-m-d H:i:s" }}
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                            <p><strong>Last Stopped:</strong> 
+                                {% if bot_status.last_stopped %}
+                                    {{ bot_status.last_stopped|date:"Y-m-d H:i:s" }}
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                            <p><strong>Current P&L:</strong> 
+                                <span class="{% if bot_status.current_unrealized_pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold">
+                                    ₹{{ bot_status.current_unrealized_pnl|floatformat:2 }}
+                                </span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Quick Actions</h6>
+                            {% if not has_broker %}
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i> 
+                                    Please connect Zerodha account to enable trading.
+                                    <a href="{% url 'broker' %}" class="alert-link">Connect Now</a>
+                                </div>
+                            {% else %}
+                                <div class="d-grid gap-3">
+                                    {% if bot_status.is_running %}
+                                        <form action="{% url 'stop_bot' %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-danger btn-lg">
+                                                <i class="fas fa-stop me-2"></i> Stop Bot
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <form action="{% url 'start_bot' %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-success btn-lg">
+                                                <i class="fas fa-play me-2"></i> Start Bot
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                    <a href="{% url 'algorithms' %}" class="btn btn-outline-primary btn-lg">
+                                        <i class="fas fa-cogs me-2"></i> Algorithm Settings
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if bot_status.last_error %}
+                        <div class="mt-4 alert alert-danger">
+                            <strong><i class="fas fa-exclamation-circle me-2"></i> Last Error:</strong>
+                            <pre class="mb-0 mt-2 bg-transparent border-0 text-danger" style="font-size: 0.92rem;">{{ bot_status.last_error|truncatechars:400 }}</pre>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Win Rate:</strong>
+                        <span class="fw-bold">{{ win_rate }}%</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Weekly Trades:</strong>
+                        <span class="fw-bold">{{ weekly_trades }}</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Monthly Trades:</strong>
+                        <span class="fw-bold">{{ monthly_trades }}</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Best Day:</strong>
+                        <span class="profit fw-bold">₹{{ performance.best_day.pnl|floatformat:2|default:"0.00" }}</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Worst Day:</strong>
+                        <span class="loss fw-bold">₹{{ performance.worst_day.pnl|floatformat:2|default:"0.00" }}</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <strong>Current Streak:</strong>
+                        <span class="fw-bold">{{ performance.current_streak }} days</span>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="text-center">
+                        <a href="{% url 'pnl_calendar' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-calendar-alt me-2"></i> View P&L Calendar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i> Recent Trades</h5>
+                    <a href="#" class="btn btn-sm btn-outline-primary">View All Trades</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_trades %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Symbol</th>
+                                        <th>Type</th>
+                                        <th>Qty</th>
+                                        <th>Entry</th>
+                                        <th>Exit</th>
+                                        <th>P&L</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for trade in recent_trades %}
+                                        <tr>
+                                            <td>{{ trade.entry_time|date:"H:i:s" }}</td>
+                                            <td class="fw-medium">{{ trade.symbol }}</td>
+                                            <td>
+                                                {% if "BUY" in trade.metadata.action %}
+                                                    <span class="badge bg-success px-3">BUY</span>
+                                                {% elif "SELL" in trade.metadata.action %}
+                                                    <span class="badge bg-danger px-3">SELL</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary px-3">{{ trade.metadata.action }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ trade.quantity }}</td>
+                                            <td>₹{{ trade.entry_price|floatformat:2 }}</td>
+                                            <td>
+                                                {% if trade.exit_price %}
+                                                    ₹{{ trade.exit_price|floatformat:2 }}
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="{% if trade.pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold">
+                                                ₹{{ trade.pnl|floatformat:2 }}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-{% if trade.status == 'EXECUTED' %}success{% elif trade.status == 'PENDING' %}warning{% else %}danger{% endif %} px-3 py-2">
+                                                    {{ trade.status }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5 text-muted">
+                            <i class="fas fa-history fa-3x mb-3 opacity-50"></i>
+                            <p>No recent trades found.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Navigation -->
+    <div class="row mt-5 quick-nav">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-compass me-2"></i> Quick Navigation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3 col-6">
+                            <a href="{% url 'broker' %}" class="btn btn-outline-primary w-100 py-3">
+                                <i class="fas fa-plug me-2"></i> Broker Setup
+                            </a>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <a href="{% url 'pnl_calendar' %}" class="btn btn-outline-success w-100 py-3">
+                                <i class="fas fa-calendar-alt me-2"></i> P&L Calendar
+                            </a>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <a href="{% url 'algorithms' %}" class="btn btn-outline-info w-100 py-3">
+                                <i class="fas fa-robot me-2"></i> Algorithms
+                            </a>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <a href="/admin/" class="btn btn-outline-secondary w-100 py-3" target="_blank">
+                                <i class="fas fa-cog me-2"></i> Admin Panel
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Original scripts unchanged
+function refreshBotStatus() {
+    $.ajax({
+        url: '{% url "bot_status" %}',
+        type: 'GET',
+        success: function(data) {
+            const statusEl = $('.stat-card .value').eq(0);
+            if (data.is_running) {
+                statusEl.html('<i class="fas fa-play-circle text-success status-running me-2"></i> Running');
+            } else {
+                statusEl.html('<i class="fas fa-stop-circle text-danger me-2"></i> Stopped');
+            }
+        }
+    });
+}
+
+setInterval(refreshBotStatus, 30000);
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-countup]').forEach(el => {
+        const target = parseFloat(el.getAttribute('data-countup'));
+        if (isNaN(target)) return;
+
+        let start = 0;
+        const duration = 1800;
+        const stepTime = 30;
+        const steps = duration / stepTime;
+        const increment = target / steps;
+
+        const timer = setInterval(() => {
+            start += increment;
+            if (start >= target) {
+                start = target;
+                clearInterval(timer);
+            }
+            el.textContent = '₹' + start.toFixed(2);
+        }, stepTime);
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,31 @@
+Django==5.0.2
+celery==5.3.4
+redis==5.0.1
+django-celery-beat==2.5.0
+
+kiteconnect==4.2.0
+
+pandas==2.1.4
+numpy==1.24.3
+requests==2.31.0
+pyotp==2.9.0
+pytz==2023.3
+holidays==0.36
+python-dateutil==2.8.2
+
+psycopg2-binary==2.9.9
+
+
+# Database (optional – PostgreSQL support)
+psycopg2-binary==2.9.9
+#python -m pip install celery==5.3.4
+#python -m pip install django-celery-beat==2.5.0
+#pip install pytz kiteconnect celery redis django-celery-beat
+
+#python -m pip install --upgrade setuptools
+#python -m pip install setuptools==68.2.2
+#python -m pip install -r requirements.txt
+#python -m pip install pandas
+#python -m pip install holidays
+#python -m pip install django-celery-results
+#pip install django django-celery-beat redis pandas numpy requests pyotp holidays

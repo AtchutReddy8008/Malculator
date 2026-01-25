@@ -1,0 +1,1004 @@
+{% extends 'base.html' %}
+
+{% block title %}Algorithms - NIFTY Trading Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --bg: #0f121a;
+        --surface: rgba(20, 25, 35, 0.85);
+        --surface-hover: rgba(30, 40, 55, 0.9);
+        --border: rgba(100, 120, 180, 0.18);
+        --text: #f1f5f9;
+        --text-light: #e5efff;
+        --text-muted: #cbd5e1;
+        --primary: #5e8cff;
+        --success: #34d399;
+        --danger: #ff6b6b;
+        --warning: #ffca6b;
+        --glow: rgba(94, 140, 255, 0.15);
+        --coming-soon: #a78bfa;
+        --coming-soon-dark: #7c3aed;
+    }
+
+    body {
+        background: var(--bg);
+        color: var(--text);
+    }
+
+    h1, h5, h6 {
+        color: var(--text-light);
+    }
+
+    .card {
+        background: var(--surface);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+
+    .card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, rgba(20,25,35,0.9), rgba(30,40,55,0.9));
+        border-bottom: none;
+        padding: 1.3rem 1.6rem;
+        font-weight: 600;
+        color: var(--text-light);
+    }
+
+    .card-body, .card-body * {
+        color: var(--text-light) !important;
+    }
+
+    .text-muted, small, .text-muted * {
+        color: var(--text-muted) !important;
+    }
+
+    .btn-lg {
+        padding: 0.75rem 1.6rem;
+        font-weight: 600;
+        border-radius: 12px;
+        transition: all 0.35s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        color: white !important;
+    }
+
+    .status-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.45rem 1rem;
+        border-radius: 50px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: white;
+    }
+
+    .status-running {
+        background: rgba(52, 211, 153, 0.25);
+        border: 1px solid rgba(52, 211, 153, 0.6);
+        color: white;
+    }
+
+    .status-stopped {
+        background: rgba(248, 113, 113, 0.25);
+        border: 1px solid rgba(248, 113, 113, 0.6);
+        color: white;
+    }
+
+    .stat-card-sm {
+        background: rgba(30, 40, 55, 0.7);
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        text-align: center;
+        border: 1px solid rgba(94,140,255,0.15);
+        transition: all 0.3s ease;
+        color: white;
+    }
+
+    .stat-card-sm:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.25);
+    }
+
+    .stat-card-sm .value {
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: white;
+    }
+
+    .stat-card-sm .label {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        margin-top: 0.35rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+    }
+
+    .log-entry {
+        padding: 0.9rem 1.1rem;
+        border-radius: 10px;
+        margin-bottom: 0.8rem;
+        background: rgba(30,40,55,0.5);
+        border-left: 4px solid;
+        transition: all 0.25s ease;
+        color: white;
+    }
+
+    .log-entry:hover {
+        background: rgba(40,50,70,0.7);
+    }
+
+    .log-info    { border-left-color: #5e8cff; }
+    .log-warning { border-left-color: var(--warning); }
+    .log-error,
+    .log-critical { border-left-color: var(--danger); }
+
+    .log-entry .badge {
+        color: white !important;
+    }
+
+    .market-status {
+        background: rgba(20,25,35,0.7);
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(94,140,255,0.12);
+        color: white;
+    }
+
+    .market-status strong {
+        color: white;
+    }
+
+    .alert {
+        border-radius: 12px;
+        border-left-width: 5px;
+        border-left-style: solid;
+        color: white;
+    }
+
+    .alert-info {
+        background: rgba(94,140,255,0.12);
+        border-left-color: var(--primary);
+    }
+
+    .alert-warning {
+        background: rgba(255,202,107,0.12);
+        border-left-color: var(--warning);
+    }
+
+    .alert-danger {
+        background: rgba(255,107,107,0.12);
+        border-left-color: var(--danger);
+    }
+
+    .alert-secondary {
+        background: rgba(100,120,180,0.12);
+        border-left-color: #6b7280;
+    }
+
+    .table th, .table td {
+        color: white !important;
+    }
+
+    .table-sm th {
+        color: var(--text-muted) !important;
+    }
+
+    .list-group-item {
+        background: transparent;
+        border: none;
+        color: white;
+    }
+
+    .text-success, .text-danger {
+        color: inherit !important;
+    }
+
+    /* ─────────────────────────────────────────────── */
+    /* Enhanced Coming Soon Section Styles             */
+    /* ─────────────────────────────────────────────── */
+
+    .coming-soon-hero {
+        text-align: center;
+        padding: 3.5rem 1rem 2.5rem;
+        background: linear-gradient(to bottom, rgba(20,25,35,0), rgba(167,139,250,0.06));
+        border-radius: 20px 20px 0 0;
+        border: 1px solid rgba(167,139,250,0.12);
+        border-bottom: none;
+    }
+
+    .coming-soon-hero h3 {
+        color: var(--coming-soon);
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+
+    .coming-soon-hero p {
+        max-width: 760px;
+        margin: 0 auto;
+        color: var(--text-muted);
+        font-size: 1.05rem;
+        line-height: 1.6;
+    }
+
+    .strategy-teaser-card {
+        height: 100%;
+        background: rgba(25,30,45,0.75);
+        border: 1px solid rgba(167,139,250,0.22);
+        border-radius: 16px;
+        overflow: hidden;
+        transition: all 0.35s ease;
+        position: relative;
+    }
+
+    .strategy-teaser-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(167,139,250,0.3);
+        border-color: var(--coming-soon);
+    }
+
+    .teaser-header {
+        background: linear-gradient(135deg, rgba(30,35,50,0.9), rgba(40,45,65,0.9));
+        padding: 1.4rem 1.5rem;
+        border-bottom: 1px solid rgba(167,139,250,0.15);
+    }
+
+    .teaser-header h5 {
+        margin: 0;
+        color: var(--coming-soon);
+        font-weight: 600;
+    }
+
+    .teaser-header small {
+        color: rgba(167,139,250,0.7);
+        font-size: 0.82rem;
+    }
+
+    .teaser-body {
+        padding: 1.5rem;
+    }
+
+    .teaser-tagline {
+        font-size: 0.98rem;
+        color: var(--text-light);
+        font-style: italic;
+        margin-bottom: 1.3rem;
+        opacity: 0.92;
+    }
+
+    .teaser-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1.4rem 0;
+    }
+
+    .teaser-features li {
+        margin-bottom: 0.95rem;
+        font-size: 0.94rem;
+        color: var(--text-muted);
+        display: flex;
+        align-items: flex-start;
+    }
+
+    .teaser-features li i {
+        color: var(--success);
+        margin-right: 0.9rem;
+        margin-top: 0.25rem;
+        font-size: 1.1rem;
+        min-width: 1.4rem;
+    }
+
+    .teaser-footer {
+        padding: 1rem 1.5rem;
+        background: rgba(20,25,35,0.6);
+        border-top: 1px solid rgba(167,139,250,0.12);
+        text-align: center;
+        font-size: 0.88rem;
+        color: var(--text-muted);
+    }
+
+    .ribbon-coming {
+        position: absolute;
+        top: 14px;
+        right: -42px;
+        background: linear-gradient(90deg, var(--coming-soon-dark), var(--coming-soon));
+        color: white;
+        font-weight: 700;
+        font-size: 0.78rem;
+        padding: 0.4rem 3.8rem;
+        transform: rotate(45deg);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+        z-index: 5;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+
+    /* ─────────────────────────────────────────────── */
+    /* Short Strangle Animation Styles                 */
+    /* ─────────────────────────────────────────────── */
+    .strangle-leg {
+        transition: all 0.6s ease;
+    }
+
+    .strike-label {
+        text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    }
+
+    #price-marker {
+        animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50%      { transform: scale(1.18); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-5"><i class="fas fa-robot me-3" style="color:var(--primary)"></i> Trading Algorithms</h1>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Main Control Panel -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-cogs me-2"></i> Algorithm Control Panel</h5>
+                    <div class="status-indicator status-{% if bot_status.is_running %}running{% else %}stopped{% endif %}">
+                        <i class="fas fa-circle fa-xs"></i>
+                        {{ bot_status.is_running|yesno:"RUNNING,STOPPED" }}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <!-- Left Column -->
+                        <div class="col-md-6">
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Current Status</h6>
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="status-indicator status-{% if bot_status.is_running %}running{% else %}stopped{% endif %} px-3 py-2">
+                                        <i class="fas fa-power-off me-2"></i>
+                                        {{ bot_status.is_running|yesno:"Active,Inactive" }}
+                                    </div>
+                                    <div class="ms-3">
+                                        {% if bot_status.is_running %}
+                                            <small>Started {{ bot_status.last_started|timesince }} ago</small>
+                                        {% else %}
+                                            <small>Stopped {{ bot_status.last_stopped|timesince }} ago</small>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Performance Snapshot</h6>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value">{{ performance.total_trades|default:"0" }}</div>
+                                            <div class="label">Total Trades</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value">{{ performance.win_rate|default:"0" }}%</div>
+                                            <div class="label">Win Rate</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value">₹{{ performance.avg_daily_pnl|default:"0.00" }}</div>
+                                            <div class="label">Avg Daily P&L</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value">{{ performance.current_streak|default:"0" }}</div>
+                                            <div class="label">Win Streak</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column - Controls + Strangle Animation -->
+                        <div class="col-md-6">
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Controls</h6>
+                                <div class="d-grid gap-3">
+                                    {% if bot_status.is_running %}
+                                        <form action="{% url 'stop_bot' %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-danger btn-lg">
+                                                <i class="fas fa-power-off me-2"></i> Stop Algorithm
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <form action="{% url 'start_bot' %}" method="post">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-success btn-lg">
+                                                <i class="fas fa-play me-2"></i> Start Algorithm
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                                <div class="mt-3 text-center">
+                                    <small class="text-muted">
+                                        <i class="far fa-clock me-1"></i>
+                                        Auto-runs during market hours (Mon, Wed–Fri)
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Short Strangle Live Visualization -->
+                            <div class="mt-4 pt-2">
+                                <h6 class="text-muted mb-3 text-center">Current Strangle Position (Live Sketch)</h6>
+                                
+                                <div class="position-relative" style="height: 140px; max-width: 340px; margin: 0 auto;">
+                                    <!-- Horizontal price line -->
+                                    <div style="position: absolute; top: 70px; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.18);"></div>
+                                    
+                                    <!-- Price label in center -->
+                                    <div id="current-price-label" 
+                                         style="position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+                                                background: rgba(30,40,55,0.9); color: #a5b4fc; padding: 0.35rem 0.9rem;
+                                                border-radius: 8px; font-size: 0.95rem; font-weight: 600; white-space: nowrap;
+                                                border: 1px solid rgba(165,180,252,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+                                        NIFTY ≈ <span id="live-nifty">---</span>
+                                    </div>
+
+                                    <!-- Short Call leg -->
+                                    <div class="strangle-leg call-leg"
+                                         style="position: absolute; top: 10px; width: 120px; height: 50px; right: 20px; 
+                                                border: 2px dashed #ff6b6b; border-radius: 10px 10px 0 0; border-bottom: none;
+                                                background: linear-gradient(to bottom, rgba(255,107,107,0.08), transparent);
+                                                box-shadow: 0 4px 14px rgba(255,107,107,0.15);">
+                                        <div style="position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+                                                    color: #ff6b6b; font-size: 0.82rem; font-weight: 600; white-space: nowrap;">
+                                            Short Call • Sell
+                                        </div>
+                                        <div id="call-strike" class="strike-label" 
+                                             style="position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+                                                    color: #fda4af; font-weight: 700; font-size: 1.1rem;">
+                                            ---
+                                        </div>
+                                    </div>
+
+                                    <!-- Short Put leg -->
+                                    <div class="strangle-leg put-leg"
+                                         style="position: absolute; bottom: 10px; width: 120px; height: 50px; left: 20px; 
+                                                border: 2px dashed #34d399; border-radius: 0 0 10px 10px; border-top: none;
+                                                background: linear-gradient(to top, rgba(52,211,153,0.08), transparent);
+                                                box-shadow: 0 4px 14px rgba(52,211,153,0.15);">
+                                        <div style="position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%);
+                                                    color: #34d399; font-size: 0.82rem; font-weight: 600; white-space: nowrap;">
+                                            Short Put • Sell
+                                        </div>
+                                        <div id="put-strike" class="strike-label"
+                                             style="position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+                                                    color: #6ee7b7; font-weight: 700; font-size: 1.1rem;">
+                                            ---
+                                        </div>
+                                    </div>
+
+                                    <!-- Animated price marker -->
+                                    <div id="price-marker" 
+                                         style="position: absolute; top: 62px; width: 18px; height: 18px; margin-left: -9px;
+                                                background: #a5b4fc; border-radius: 50%; border: 3px solid #6366f1;
+                                                box-shadow: 0 0 16px rgba(99,102,241,0.7), 0 0 0 6px rgba(99,102,241,0.2);
+                                                transition: left 1.8s ease-out;">
+                                    </div>
+                                </div>
+
+                                <div class="text-center mt-3">
+                                    <small class="text-muted" style="font-size: 0.82rem;">
+                                        Current position: <strong id="strangle-status">No active position</strong>
+                                    </small>
+                                </div>
+                            </div>
+
+                            {% if bot_status.last_error %}
+                                <div class="alert alert-danger mt-4">
+                                    <h6 class="mb-2"><i class="fas fa-exclamation-triangle me-2"></i> Last Error</h6>
+                                    <pre class="mb-0 bg-transparent border-0 text-white font-monospace" style="font-size: 0.88rem; white-space: pre-wrap;">{{ bot_status.last_error|truncatechars:320 }}</pre>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Algorithm Details -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i> Algorithm Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <table class="table table-borderless table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <th class="text-muted">Name</th>
+                                        <td class="fw-medium">{{ algorithm.name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Version</th>
+                                        <td>{{ algorithm.version }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Underlying</th>
+                                        <td class="fw-medium">{{ algorithm.underlying }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Lot Size</th>
+                                        <td>{{ algorithm.lot_size }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Max Lots</th>
+                                        <td>{{ algorithm.max_lots }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-borderless table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <th class="text-muted">Entry Window</th>
+                                        <td>{{ algorithm.entry_window }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Exit Time</th>
+                                        <td>{{ algorithm.exit_time }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Strategy Type</th>
+                                        <td>{{ algorithm.strategy_type }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Risk Level</th>
+                                        <td>{{ algorithm.risk_level }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted">Expected Returns</th>
+                                        <td>{{ algorithm.expected_returns }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <hr class="my-4 bg-secondary bg-opacity-25">
+
+                    <h6 class="mb-3">Strategy Rules</h6>
+                    <ul class="list-group list-group-flush">
+                        {% for rule in strategy_rules %}
+                            <li class="list-group-item bg-transparent border-0 px-0 py-2 text-white">
+                                <i class="fas fa-check-circle text-success me-3"></i>
+                                {{ rule }}
+                            </li>
+                        {% empty %}
+                            <li class="text-muted">No rules defined.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Recent Logs -->
+            <div class="card mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-terminal me-2"></i> Recent Logs</h5>
+                    <small class="text-muted">Last 50 entries</small>
+                </div>
+                <div class="card-body p-0" style="max-height: 340px; overflow-y: auto;">
+                    {% if recent_logs %}
+                        {% for log in recent_logs %}
+                            <div class="log-entry log-{{ log.level|lower }}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="d-flex align-items-center">
+                                        <span class="badge me-3
+                                            {% if log.level == 'INFO' %}bg-info
+                                            {% elif log.level == 'WARNING' %}bg-warning text-dark
+                                            {% elif log.level == 'ERROR' %}bg-danger
+                                            {% elif log.level == 'CRITICAL' %}bg-dark{% endif %}">
+                                            {{ log.level }}
+                                        </span>
+                                        <div>{{ log.message }}</div>
+                                    </div>
+                                    <small class="text-muted ms-3 flex-shrink-0">
+                                        {{ log.timestamp|date:"H:i:s" }}
+                                    </small>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-5 text-muted">
+                            <i class="fas fa-history fa-2x mb-3 opacity-50"></i>
+                            <p>No recent logs available</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Performance Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Statistics</h5>
+                </div>
+                <div class="card-body">
+                    {% if performance.best_day %}
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>Best Day</strong>
+                                <div class="text-end">
+                                    <div class="fw-bold text-success">₹{{ performance.best_day.pnl|floatformat:2 }}</div>
+                                    <small>{{ performance.best_day.date }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if performance.worst_day %}
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <strong>Worst Day</strong>
+                                <div class="text-end">
+                                    <div class="fw-bold text-danger">₹{{ performance.worst_day.pnl|floatformat:2 }}</div>
+                                    <small>{{ performance.worst_day.date }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="alert alert-info border-0 bg-info bg-opacity-10">
+                        <h6 class="mb-2"><i class="fas fa-lightbulb me-2"></i> Trading Tips</h6>
+                        <ul class="mb-0 small">
+                            <li>Algorithm active Mon, Wed, Thu, Fri</li>
+                            <li>No trading on Tuesdays & expiry days</li>
+                            <li>Auto exit at 3:00 PM IST</li>
+                            <li>Daily target ≈ 2% of margin or net credit</li>
+                            <li>Stop loss = daily target amount</li>
+                        </ul>
+                    </div>
+
+                    <hr class="my-4 bg-secondary bg-opacity-25">
+
+                    <h6 class="mb-3">Market Status</h6>
+                    <div class="market-status">
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Current Time (IST):</span>
+                            <strong id="current-time">Loading...</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Market Hours:</span>
+                            <strong>9:15 – 15:30</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Status:</span>
+                            <strong id="market-status">Loading...</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schedule -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i> Weekly Schedule</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless table-sm mb-0">
+                        <tbody>
+                            <tr>
+                                <td><i class="fas fa-check-circle text-success me-2"></i> Monday</td>
+                                <td class="text-end">9:15 – 15:30</td>
+                            </tr>
+                            <tr>
+                                <td><i class="fas fa-times-circle text-danger me-2"></i> Tuesday</td>
+                                <td class="text-end text-muted">No Trading</td>
+                            </tr>
+                            <tr>
+                                <td><i class="fas fa-check-circle text-success me-2"></i> Wednesday</td>
+                                <td class="text-end">9:15 – 15:30</td>
+                            </tr>
+                            <tr>
+                                <td><i class="fas fa-check-circle text-success me-2"></i> Thursday</td>
+                                <td class="text-end">9:15 – 15:30</td>
+                            </tr>
+                            <tr>
+                                <td><i class="fas fa-check-circle text-success me-2"></i> Friday</td>
+                                <td class="text-end">9:15 – 15:30</td>
+                            </tr>
+                            <tr>
+                                <td><i class="fas fa-times-circle text-danger me-2"></i> Weekends</td>
+                                <td class="text-end text-muted">No Trading</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <i class="far fa-clock me-1"></i>
+                            Entry window: 9:21:00 – 9:21:30 IST
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Important Notes -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Important Notes</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning border-0 bg-warning bg-opacity-10 mb-3">
+                        <small>
+                            <strong>Disclaimer:</strong><br>
+                            Trading carries significant risk of loss. Past performance is not indicative of future results. Use at your own risk.
+                        </small>
+                    </div>
+
+                    <div class="alert alert-secondary border-0 bg-secondary bg-opacity-10">
+                        <small>
+                            <strong>Requirements:</strong><br>
+                            • Active Zerodha account with API access<br>
+                            • Sufficient margin for NIFTY options<br>
+                            • Stable, low-latency internet connection<br>
+                            • Algorithm active only Mon, Wed–Fri
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <!--          ENHANCED COMING SOON SECTION           -->
+    <!-- ─────────────────────────────────────────────── -->
+
+    <div class="mt-5 pt-5">
+        <div class="coming-soon-hero">
+            <h3><i class="fas fa-rocket-launch me-3"></i> Next Generation Strategies</h3>
+            <p>
+                We're actively building a full suite of institutional-grade algorithms — each designed for specific market regimes, risk profiles, and reward characteristics.<br>
+                Every upcoming strategy will integrate seamlessly into this same dashboard with real-time monitoring, detailed logs, performance analytics, and one-click controls — just like your current NIFTY bot.
+            </p>
+        </div>
+
+        <div class="row g-4 mt-2">
+            <!-- BANKNIFTY Momentum -->
+            <div class="col-xl-4 col-lg-6">
+                <div class="strategy-teaser-card">
+                    <div class="ribbon-coming">COMING SOON</div>
+                    <div class="teaser-header">
+                        <h5><i class="fas fa-bolt-lightning me-2"></i> BANKNIFTY Momentum Scalper</h5>
+                        <small>High-frequency breakout engine</small>
+                    </div>
+                    <div class="teaser-body">
+                        <div class="teaser-tagline">Capture explosive 30–120 second moves in high-volatility sessions</div>
+                        <ul class="teaser-features">
+                            <li><i class="fas fa-check-circle"></i> Multi-timeframe RSI + Volume Surge + Order-flow confirmation</li>
+                            <li><i class="fas fa-check-circle"></i> Fixed risk 0.35–0.55% per trade with volatility-adjusted sizing</li>
+                            <li><i class="fas fa-check-circle"></i> Auto-compounding after 3 consecutive wins</li>
+                            <li><i class="fas fa-check-circle"></i> Choppy-market filter using ADX + ATR bands</li>
+                            <li><i class="fas fa-check-circle"></i> Max 4–6 trades per session</li>
+                        </ul>
+                    </div>
+                    <div class="teaser-footer">
+                        Expected release: Q2 2026 • Early access waitlist opening soon
+                    </div>
+                </div>
+            </div>
+
+            <!-- Iron Condor -->
+            <div class="col-xl-4 col-lg-6">
+                <div class="strategy-teaser-card">
+                    <div class="ribbon-coming">COMING SOON</div>
+                    <div class="teaser-header">
+                        <h5><i class="fas fa-shield-halved me-2"></i> NIFTY Hedged Iron Condor</h5>
+                        <small>Theta-dominant range strategy</small>
+                    </div>
+                    <div class="teaser-body">
+                        <div class="teaser-tagline">Consistent income in low-to-moderate volatility environments</div>
+                        <ul class="teaser-features">
+                            <li><i class="fas fa-check-circle"></i> Weekly setup with 45–55 DTE entries</li>
+                            <li><i class="fas fa-check-circle"></i> Dynamic delta-neutral adjustments (0.15–0.30 delta legs)</li>
+                            <li><i class="fas fa-check-circle"></i> Profit zone typically 140–480 points wide</li>
+                            <li><i class="fas fa-check-circle"></i> IV rank < 35 filter + volatility crush protection</li>
+                            <li><i class="fas fa-check-circle"></i> Max 1–2 positions, strict 2× credit loss stop</li>
+                        </ul>
+                    </div>
+                    <div class="teaser-footer">
+                        Expected release: Q3 2026 • Institutional-grade Greeks monitoring
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trend Follower -->
+            <div class="col-xl-4 col-lg-6">
+                <div class="strategy-teaser-card">
+                    <div class="ribbon-coming">COMING SOON</div>
+                    <div class="teaser-header">
+                        <h5><i class="fas fa-chart-line-up me-2"></i> NIFTY Adaptive Trend Follower</h5>
+                        <small>Directional swing capture</small>
+                    </div>
+                    <div class="teaser-body">
+                        <div class="teaser-tagline">Ride sustained moves while avoiding whipsaws</div>
+                        <ul class="teaser-features">
+                            <li><i class="fas fa-check-circle"></i> Supertrend (10,3) + 21/55 EMA cloud filter</li>
+                            <li><i class="fas fa-check-circle"></i> ATR-based trailing stop + partial profit scaling</li>
+                            <li><i class="fas fa-check-circle"></i> No entries during expiry week or high IV events</li>
+                            <li><i class="fas fa-check-circle"></i> Max 2 open positions with correlation check</li>
+                            <li><i class="fas fa-check-circle"></i> Time-decay exit after 4 hours in profit</li>
+                        </ul>
+                    </div>
+                    <div class="teaser-footer">
+                        Expected release: Q4 2026 • Multi-timeframe confirmation
+                    </div>
+                </div>
+            </div>
+
+            <!-- Straddle Adjuster -->
+            <div class="col-xl-4 col-lg-6">
+                <div class="strategy-teaser-card">
+                    <div class="ribbon-coming">COMING SOON</div>
+                    <div class="teaser-header">
+                        <h5><i class="fas fa-balance-scale me-2"></i> Short Straddle / Strangle Engine</h5>
+                        <small>Volatility arbitrage specialist</small>
+                    </div>
+                    <div class="teaser-body">
+                        <div class="teaser-tagline">Harvest premium decay with intelligent hedging</div>
+                        <ul class="teaser-features">
+                            <li><i class="fas fa-check-circle"></i> Short straddle on IV rank < 30, strangle on 30–50</li>
+                            <li><i class="fas fa-check-circle"></i> Delta-hedging triggered at ±0.20 move</li>
+                            <li><i class="fas fa-check-circle"></i> Auto-roll to next week when 50% profit reached</li>
+                            <li><i class="fas fa-check-circle"></i> Vega, theta, and gamma monitoring dashboard</li>
+                            <li><i class="fas fa-check-circle"></i> Hard stop at 1.8× initial credit received</li>
+                        </ul>
+                    </div>
+                    <div class="teaser-footer">
+                        Expected release: Early 2027 • Advanced options chain analysis
+                    </div>
+                </div>
+            </div>
+
+            <!-- Adaptive Multi-Strategy -->
+            <div class="col-xl-4 col-lg-6">
+                <div class="strategy-teaser-card">
+                    <div class="ribbon-coming">COMING SOON</div>
+                    <div class="teaser-header">
+                        <h5><i class="fas fa-brain me-2"></i> Regime-Adaptive Multi-Strategy</h5>
+                        <small>Market-aware hybrid approach</small>
+                    </div>
+                    <div class="teaser-body">
+                        <div class="teaser-tagline">Automatically selects best strategy per market condition</div>
+                        <ul class="teaser-features">
+                            <li><i class="fas fa-check-circle"></i> 4 regimes: Trending, Mean-reverting, Volatile, Quiet</li>
+                            <li><i class="fas fa-check-circle"></i> Lightweight ML regime classifier (no cloud dependency)</li>
+                            <li><i class="fas fa-check-circle"></i> Dynamic allocation across legs / underlyings</li>
+                            <li><i class="fas fa-check-circle"></i> Portfolio-level VaR and stress-test monitoring</li>
+                            <li><i class="fas fa-check-circle"></i> 8+ years walk-forward validated logic</li>
+                        </ul>
+                    </div>
+                    <div class="teaser-footer">
+                        Expected release: Mid 2027 • Flagship product
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-5 mb-4">
+            <small class="text-muted" style="font-size: 0.95rem;">
+                All future strategies will appear here with full control panels, performance dashboards,<br>
+                and the same reliability you've come to expect. Want to be notified first?<br>
+                Reach out — we're prioritizing serious traders.
+            </small>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Live time & market status
+function updateMarketStatus() {
+    const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const timeParts = now.split(', ');
+    const time = timeParts[1].split(':').slice(0,2).join(':');
+
+    document.getElementById('current-time').textContent = time + ' IST';
+
+    const hour = parseInt(time.split(':')[0]);
+    const minute = parseInt(time.split(':')[1]);
+    const day = new Date().getDay();
+
+    const isWeekday = day >= 1 && day <= 5;
+    const isTuesday = day === 2;
+    const inMarketHours = (hour > 9 || (hour === 9 && minute >= 15)) &&
+                          (hour < 15 || (hour === 15 && minute <= 30));
+
+    const statusEl = document.getElementById('market-status');
+
+    if (!isWeekday || isTuesday || !inMarketHours) {
+        statusEl.innerHTML = '<span class="text-danger fw-bold">CLOSED</span>';
+    } else {
+        statusEl.innerHTML = '<span class="text-success fw-bold">OPEN</span>';
+    }
+}
+
+updateMarketStatus();
+setInterval(updateMarketStatus, 1000);
+
+// Refresh bot status
+function refreshBotStatus() {
+    fetch('{% url "bot_status" %}')
+        .then(response => response.json())
+        .then(data => {
+            const statusEl = document.querySelector('.status-indicator');
+            if (statusEl) {
+                if (data.is_running) {
+                    statusEl.className = 'status-indicator status-running';
+                    statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> RUNNING';
+                } else {
+                    statusEl.className = 'status-indicator status-stopped';
+                    statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> STOPPED';
+                }
+            }
+        })
+        .catch(() => {});
+}
+
+setInterval(refreshBotStatus, 12000);
+
+// Fake/demo strangle animation (replace with real data feed later)
+function animateStrangle() {
+    const marker = document.getElementById('price-marker');
+    if (!marker) return;
+
+    const containerWidth = marker.parentElement.offsetWidth;
+    const randomPos = Math.random() * 0.8 + 0.1; // 10% – 90%
+    const leftPx = containerWidth * randomPos;
+
+    marker.style.left = leftPx + 'px';
+
+    // Fake NIFTY price
+    const base = 24800;
+    const fakePrice = Math.round(base + (randomPos - 0.5) * 800);
+    document.getElementById('live-nifty').textContent = fakePrice.toLocaleString('en-IN');
+
+    // Fake strikes (±200 from rounded base)
+    document.getElementById('call-strike').textContent = (Math.round(fakePrice / 100) * 100 + 200).toLocaleString('en-IN');
+    document.getElementById('put-strike').textContent  = (Math.round(fakePrice / 100) * 100 - 200).toLocaleString('en-IN');
+
+    // Random status messages
+    const statuses = [
+        "Active – collecting theta",
+        "Delta neutral",
+        "Slight positive delta",
+        "Approaching upper breakeven",
+        "Approaching lower breakeven",
+        "No active position"
+    ];
+    document.getElementById('strangle-status').textContent = 
+        statuses[Math.floor(Math.random() * statuses.length)];
+}
+
+setInterval(animateStrangle, 4800);
+animateStrangle(); // initial call
+</script>
+{% endblock %}
