@@ -383,6 +383,40 @@
                                 </div>
                             </div>
 
+                            <!-- Added: Today's Target & Stop-Loss Display -->
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Today's Target & Stop-Loss</h6>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value text-success">
+                                                {% if daily_target and daily_target != 0 %}
+                                                    ₹{{ daily_target|floatformat:2 }}
+                                                {% else %}
+                                                    ---
+                                                {% endif %}
+                                            </div>
+                                            <div class="label">Profit Target</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="stat-card-sm">
+                                            <div class="value text-danger">
+                                                {% if daily_stop_loss and daily_stop_loss != 0 %}
+                                                    ₹{{ daily_stop_loss|floatformat:2 }}
+                                                {% else %}
+                                                    ---
+                                                {% endif %}
+                                            </div>
+                                            <div class="label">Stop Loss</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="text-muted mt-2 d-block">
+                                    Values are locked after successful entry today
+                                </small>
+                            </div>
+
                             <div class="mb-4">
                                 <h6 class="text-muted mb-3">Performance Snapshot</h6>
                                 <div class="row g-3">
