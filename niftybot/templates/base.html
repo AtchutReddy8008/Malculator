@@ -1,490 +1,3 @@
-{% comment %} <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}NIFTY Trading Bot{% endblock %}</title>
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    
-    {% block extra_head %}
-    <script src="https://cdn.canvasjs.com/canvasjs.min.js"></script>
-    {% endblock %}
-
-    <style>
-        :root {
-            --primary: #00ff9d;
-            --primary-dim: rgba(0, 255, 157, 0.1);
-            --primary-glow: rgba(0, 255, 157, 0.4);
-            --danger: #ff4d4d;
-            --accent: #40c0ff;
-            --bg-dark: #050505;
-            --glass-bg: rgba(20, 20, 20, 0.6);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --font-ui: 'Inter', sans-serif;
-            --font-num: 'JetBrains Mono', monospace;
-        }
-
-        html, body {
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            background-color: var(--bg-dark);
-            color: #e0e0e0;
-            font-family: var(--font-ui);
-            overflow-x: hidden;
-            display: flex;
-            flex-direction: column;
-            /* Prevents footer content from being hidden behind the fixed ticker */
-            padding-bottom: 40px; 
-        }
-
-        /* ================= BACKGROUND CHART ================= */
-        #chartContainer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            opacity: 0.5;
-            pointer-events: none;
-        }
-
-        /* ================= UTILITY ================= */
-        .font-num { font-family: var(--font-num); }
-        .text-green { color: var(--primary) !important; }
-        .text-red { color: var(--danger) !important; }
-        
-        .glass-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-        }
-
-        /* ================= NAVBAR & BUTTONS ================= */
-        .navbar {
-            background: rgba(5, 5, 5, 0.7);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--glass-border);
-            padding: 0.8rem 0;
-            z-index: 1000;
-        }
-
-        .navbar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
-            letter-spacing: -0.5px;
-            color: #fff !important;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .brand-icon {
-            color: var(--primary);
-            filter: drop-shadow(0 0 5px var(--primary));
-        }
-
-        .navbar-nav .nav-link {
-            color: #aaa !important;
-            font-weight: 500;
-            font-size: 0.9rem;
-            margin: 0 4px;
-            padding: 8px 16px;
-            border-radius: 6px;
-            transition: all 0.3s ease;
-        }
-
-        .navbar-nav .nav-link:hover, 
-        .navbar-nav .nav-link.active {
-            color: #fff !important;
-            background: var(--primary-dim);
-        }
-
-        /* Highlighting for Login/Signup */
-        .nav-auth-btn {
-            border: 1px solid var(--primary) !important;
-            color: var(--primary) !important;
-            background: transparent;
-        }
-
-        .nav-auth-btn:hover {
-            background: var(--primary-dim) !important;
-            box-shadow: 0 0 15px var(--primary-glow);
-            color: #fff !important;
-        }
-
-        .dropdown-menu {
-            background: #0f0f0f;
-            border: 1px solid var(--glass-border);
-            border-radius: 8px;
-        }
-        
-        .dropdown-item { color: #ccc; transition: 0.2s; }
-        .dropdown-item:hover { background: var(--primary-dim); color: var(--primary); }
-
-        /* ================= MAIN CONTENT ================= */
-        .main-container {
-            flex: 1;
-            margin-top: 90px;
-            margin-bottom: 60px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .card, .sidebar {
-            background: rgba(15, 15, 15, 0.65);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-        }
-
-        .card-header {
-            background: rgba(255, 255, 255, 0.02);
-            border-bottom: 1px solid var(--glass-border);
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 1px;
-            color: var(--primary);
-            padding: 1rem 1.25rem;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: #000;
-            border: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-primary:hover {
-            background: #00cc7d;
-            box-shadow: 0 0 15px var(--primary-glow);
-            transform: translateY(-1px);
-        }
-
-        /* ================= FOOTER REDESIGN ================= */
-        .footer {
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-            padding: 8rem 0;
-            position: relative;
-            margin-bottom: 0; /* Changed to 0 to prevent ticker overlap */
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .footer::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 1px;
-            background: linear-gradient(90deg, transparent 0%, var(--primary) 50%, transparent 100%);
-            opacity: 0.6;
-            box-shadow: 0 0 10px var(--primary);
-        }
-
-        .footer-logo {
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: #fff;
-            letter-spacing: -0.5px;
-            margin-bottom: 0.5rem;
-        }
-
-        .footer-desc {
-            font-size: 0.85rem;
-            color: #888;
-            line-height: 1.5;
-        }
-
-        /* PREMIUM SIGNATURE STYLE */
-        .signature-block {
-            display: inline-flex;
-            flex-direction: column;
-            align-items: flex-end;
-            justify-content: center;
-        }
-
-        .crafted-by {
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #666;
-            margin-bottom: 4px;
-        }
-
-        .name-highlight {
-            font-family: var(--font-ui);
-            font-weight: 800;
-            font-size: 1.8rem;
-            background: linear-gradient(135deg, #fff 20%, var(--primary) 50%, var(--accent) 80%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-size: 200% auto;
-            animation: shine 5s linear infinite;
-            text-decoration: none;
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: transform 0.3s ease;
-        }
-
-        .name-highlight:hover {
-            transform: scale(1.02);
-            filter: drop-shadow(0 0 8px rgba(0, 255, 157, 0.4));
-        }
-
-        @keyframes shine {
-            to { background-position: 200% center; }
-        }
-
-        .linkedin-icon {
-            font-size: 1.4rem;
-            color: #0077b5;
-            background: rgba(255,255,255,0.1);
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .name-highlight:hover .linkedin-icon {
-            background: #0077b5;
-            color: #fff;
-            box-shadow: 0 0 15px rgba(0, 119, 181, 0.6);
-        }
-
-        @media (max-width: 768px) {
-            .signature-block { align-items: center; margin-top: 2rem; }
-            .crafted-by { text-align: center; }
-        }
-
-        .heart { color: var(--danger); animation: beat 1.5s infinite; display: inline-block; font-size: 0.8rem; margin: 0 3px;}
-        @keyframes beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
-
-        /* ================= TICKER ================= */
-        .ticker-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 40px;
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            overflow: hidden;
-        }
-        .ticker-wrapper { display: flex; animation: scroll 30s linear infinite; will-change: transform; }
-        .ticker-item { padding: 0 30px; font-family: var(--font-num); font-size: 0.85rem; white-space: nowrap; }
-        .ticker-symbol { font-weight: 700; color: #fff; margin-right: 8px; }
-        @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-
-        {% block extra_css %}{% endblock %}
-    </style>
-</head>
-<body>
-
-    <div id="chartContainer"></div>
-
-    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="{% url 'home' %}">
-                <i class="fas fa-chart-line brand-icon"></i> 
-                <span>TRADE WITH NAMAN</span>
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    {% if user.is_authenticated %}
-                        <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">Dashboard</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'broker' %}active{% endif %}" href="{% url 'broker' %}">Broker</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'pnl_calendar' %}active{% endif %}" href="{% url 'pnl_calendar' %}">PnL</a></li>
-                        <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'algorithms' %}active{% endif %}" href="{% url 'algorithms' %}">Strategies</a></li>
-                        <li class="nav-item dropdown ms-lg-3">
-                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
-                                <div class="bg-dark border border-secondary rounded-circle d-flex justify-content-center align-items-center me-2" style="width: 32px; height: 32px;">
-                                    <i class="fas fa-user text-muted small"></i>
-                                </div>
-                                {{ user.username }}
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow-lg">
-                                <li><a class="dropdown-item" href="{% url 'dashboard' %}">Dashboard</a></li>
-                                <li><a class="dropdown-item" href="{% url 'broker' %}">Settings</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <form method="post" action="{% url 'logout' %}" class="m-0">
-                                    {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-danger"><i class="fas fa-sign-out-alt me-2"></i> Logout</button>
-                                </form>
-                            </ul>
-                        </li>
-                    {% else %}
-                        <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
-                        <li class="nav-item"><a class="nav-link nav-auth-btn px-3 mx-lg-2" href="{% url 'login' %}">Login</a></li>
-                        <li class="nav-item"><a class="nav-link btn btn-primary text-black px-4 ms-lg-2" href="{% url 'signup' %}" style="color: #000 !important;">Sign Up</a></li>
-                    {% endif %}
-                </ul>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container main-container">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow" role="alert">
-                    <i class="fas fa-info-circle me-2"></i> {{ message }}
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-
-        {% block content %}{% endblock %}
-    </div>
-
-    <footer class="footer">
-        <div class="container">
-            <div class="row align-items-center">
-                
-                <div class="col-md-6 text-center text-md-start">
-                    <div class="footer-logo">
-                        <i class="fas fa-layer-group text-green me-2"></i>NIFTY BOT
-                    </div>
-                    <p class="footer-desc mb-0 mt-2">
-                        Advanced algorithmic trading system.<br>
-                        Discipline. Automation. Profit.
-                    </p>
-                    <div class="mt-2 text-muted small" style="opacity: 0.4; font-size: 0.7rem;">
-                        &copy; 2026 Nifty Trading Bot. All rights reserved.
-                    </div>
-                </div>
-
-                <div class="col-md-6 text-center text-md-end">
-                    <div class="signature-block">
-                        <div class="crafted-by">
-                            Designed & Built by <i class="fas fa-heart heart"></i>
-                        </div>
-                        <a href="https://www.linkedin.com/in/atchut-reddy-8008ar/" target="_blank" class="name-highlight" title="Visit LinkedIn Profile">
-                            ATCHUT REDDY
-                            <div class="linkedin-icon">
-                                <i class="fab fa-linkedin-in"></i>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </footer>
-
-    <div class="ticker-container">
-        <div class="ticker-wrapper">
-            {% for _ in "12345678"|make_list %}
-            <div class="ticker-item">
-                <span class="ticker-symbol">NIFTY</span>
-                <span class="ticker-price">25,175.40</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 0.51%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">BANKNIFTY</span>
-                <span class="ticker-price">59,452.30</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 0.34%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">FINNIFTY</span>
-                <span class="ticker-price">26,810.15</span>
-                <span class="text-red ms-1"><i class="fas fa-caret-down"></i> 0.16%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">MIDCPNIFTY</span>
-                <span class="ticker-price">12,120.00</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 1.10%</span>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
-    <script>
-    (function () {
-      if (!window.CanvasJS || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-      const dpsCandles = [], dpsFastMA = [], dpsMediumMA = [];
-      let x = 0, lastClose = 25000, closes = [];
-      
-      const chart = new CanvasJS.Chart("chartContainer", {
-        animationEnabled: false,
-        backgroundColor: "transparent",
-        toolTip: { enabled: false },
-        axisX: { lineThickness:0, tickLength:0, labelFormatter:()=>"", gridThickness: 0 },
-        axisY: { lineThickness:0, tickLength:0, labelFormatter:()=>"", gridThickness: 0 },
-        data: [
-          { 
-            type:"candlestick", 
-            risingColor:"rgba(0, 255, 157, 0.3)", 
-            fallingColor:"rgba(255, 77, 77, 0.3)", 
-            color: "rgba(80,80,80,0.5)", 
-            dataPoints:dpsCandles 
-          },
-          { type:"line", lineColor:"rgba(0, 255, 157, 0.4)", markerSize:0, dataPoints:dpsFastMA },
-          { type:"line", lineColor:"rgba(64, 192, 255, 0.4)", markerSize:0, dataPoints:dpsMediumMA }
-        ]
-      });
-
-      const FAST = 7, MID = 17, WIN = 60;
-      function update() {
-        const open = lastClose;
-        const close = +(open + (Math.random() - 0.48) * 30).toFixed(2);
-        const high = Math.max(open, close) + Math.random() * 10;
-        const low = Math.min(open, close) - Math.random() * 10;
-        dpsCandles.push({ x, y:[open, high, low, close] });
-        closes.push(close);
-        lastClose = close;
-
-        if (closes.length >= FAST) dpsFastMA.push({ x, y: closes.slice(-FAST).reduce((a,b)=>a+b)/FAST });
-        if (closes.length >= MID) dpsMediumMA.push({ x, y: closes.slice(-MID).reduce((a,b)=>a+b)/MID });
-
-        x++;
-        if (dpsCandles.length > WIN) {
-          dpsCandles.shift(); closes.shift();
-          if (dpsFastMA.length) dpsFastMA.shift();
-          if (dpsMediumMA.length) dpsMediumMA.shift();
-        }
-        chart.render();
-      }
-      for(let i=0; i<WIN; i++) update();
-      const interval = setInterval(update, 200);
-      window.addEventListener("beforeunload", () => clearInterval(interval));
-    })();
-    </script>
-
-    {% block extra_js %}{% endblock %}
-</body>
-</html> {% endcomment %}
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -527,11 +40,10 @@
             overflow-x: hidden;
             display: flex;
             flex-direction: column;
-            /* Prevents footer content from being hidden behind the fixed ticker */
             padding-bottom: 40px; 
         }
 
-        /* ================= BACKGROUND CHART ================= */
+        /* ================= BACKGROUND CHART (ULTRA-SMOOTH FLOWING WAVES) ================= */
         #chartContainer {
             position: fixed;
             top: 0;
@@ -539,8 +51,9 @@
             width: 100%;
             height: 100%;
             z-index: -1;
-            opacity: 0.5;
+            opacity: 0.55; /* More visible for "alive" inviting feel */
             pointer-events: none;
+            filter: saturate(1.4) blur(1px); /* Enhanced glow + ultra-fluid softness */
         }
 
         /* ================= UTILITY ================= */
@@ -596,19 +109,10 @@
             background: var(--primary-dim);
         }
 
-        /* Highlighting for Login/Signup/Strategies */
-        .nav-auth-btn,
-        .nav-strategies {
+        .nav-auth-btn {
             border: 1px solid var(--primary) !important;
             color: var(--primary) !important;
             background: transparent;
-        }
-
-        .nav-auth-btn:hover,
-        .nav-strategies:hover {
-            background: var(--primary-dim) !important;
-            box-shadow: 0 0 15px var(--primary-glow);
-            color: #fff !important;
         }
 
         .dropdown-menu {
@@ -629,24 +133,12 @@
             z-index: 1;
         }
 
-        .card, .sidebar {
+        .card {
             background: rgba(15, 15, 15, 0.65);
             backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
             border-radius: 12px;
             margin-bottom: 1.5rem;
-        }
-
-        .card-header {
-            background: rgba(255, 255, 255, 0.02);
-            border-bottom: 1px solid var(--glass-border);
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 1px;
-            color: var(--primary);
-            padding: 1rem 1.25rem;
         }
 
         .btn-primary {
@@ -663,13 +155,12 @@
             transform: translateY(-1px);
         }
 
-        /* ================= FOOTER REDESIGN ================= */
+        /* ================= FOOTER ================= */
         .footer {
             background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(10px);
             padding: 8rem 0;
             position: relative;
-            margin-bottom: 0; /* Changed to 0 to prevent ticker overlap */
             border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
 
@@ -699,7 +190,7 @@
             line-height: 1.5;
         }
 
-        /* PREMIUM SIGNATURE STYLE */
+        /* PREMIUM SIGNATURE STYLE WITH LINKEDIN ICON */
         .signature-block {
             display: inline-flex;
             flex-direction: column;
@@ -729,7 +220,7 @@
             line-height: 1;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             transition: transform 0.3s ease;
         }
 
@@ -759,6 +250,7 @@
             background: #0077b5;
             color: #fff;
             box-shadow: 0 0 15px rgba(0, 119, 181, 0.6);
+            transform: rotate(360deg);
         }
 
         @media (max-width: 768px) {
@@ -784,9 +276,8 @@
             align-items: center;
             overflow: hidden;
         }
-        .ticker-wrapper { display: flex; animation: scroll 30s linear infinite; will-change: transform; }
+        .ticker-wrapper { display: flex; animation: scroll 30s linear infinite; }
         .ticker-item { padding: 0 30px; font-family: var(--font-num); font-size: 0.85rem; white-space: nowrap; }
-        .ticker-symbol { font-weight: 700; color: #fff; margin-right: 8px; }
         @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
 
         {% block extra_css %}{% endblock %}
@@ -808,26 +299,10 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto align-items-center">
                     {% if user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">
-                                <i class="fas fa-tachometer-alt me-1"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.resolver_match.url_name == 'broker' %}active{% endif %}" href="{% url 'broker' %}">
-                                <i class="fas fa-plug me-1"></i> Broker
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.resolver_match.url_name == 'pnl_calendar' %}active{% endif %}" href="{% url 'pnl_calendar' %}">
-                                <i class="fas fa-calendar-alt me-1"></i> PnL
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.resolver_match.url_name == 'strategies_list' or request.resolver_match.url_name == 'short_strangle_detail' %}active{% endif %}" href="{% url 'strategies_list' %}">
-                                <i class="fas fa-brain me-1"></i> Strategies
-                            </a>
-                        </li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i> Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'broker' %}"><i class="fas fa-plug me-1"></i> Broker</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'pnl_calendar' %}"><i class="fas fa-calendar-alt me-1"></i> PnL</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'strategies_list' %}"><i class="fas fa-brain me-1"></i> Strategies</a></li>
                         <li class="nav-item dropdown ms-lg-3">
                             <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
                                 <div class="bg-dark border border-secondary rounded-circle d-flex justify-content-center align-items-center me-2" style="width: 32px; height: 32px;">
@@ -835,15 +310,10 @@
                                 </div>
                                 {{ user.username }}
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow-lg">
-                                <li><a class="dropdown-item" href="{% url 'dashboard' %}"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a></li>
-                                <li><a class="dropdown-item" href="{% url 'broker' %}"><i class="fas fa-cog me-2"></i> Settings</a></li>
-                                <li><hr class="dropdown-divider"></li>
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                                 <form method="post" action="{% url 'logout' %}" class="m-0">
                                     {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-danger">
-                                        <i class="fas fa-sign-out-alt me-2"></i> Logout
-                                    </button>
+                                    <button type="submit" class="dropdown-item text-danger"><i class="fas fa-sign-out-alt me-2"></i> Logout</button>
                                 </form>
                             </ul>
                         </li>
@@ -866,32 +336,19 @@
                 </div>
             {% endfor %}
         {% endif %}
-
         {% block content %}{% endblock %}
     </div>
 
     <footer class="footer">
         <div class="container">
             <div class="row align-items-center">
-                
                 <div class="col-md-6 text-center text-md-start">
-                    <div class="footer-logo">
-                        <i class="fas fa-layer-group text-green me-2"></i>NIFTY BOT
-                    </div>
-                    <p class="footer-desc mb-0 mt-2">
-                        Advanced algorithmic trading system.<br>
-                        Discipline. Automation. Profit.
-                    </p>
-                    <div class="mt-2 text-muted small" style="opacity: 0.4; font-size: 0.7rem;">
-                        &copy; 2026 Nifty Trading Bot. All rights reserved.
-                    </div>
+                    <div class="footer-logo"><i class="fas fa-layer-group text-green me-2"></i>NIFTY BOT</div>
+                    <p class="footer-desc mb-0 mt-2">Advanced algorithmic trading system.<br>Discipline. Automation. Profit.</p>
                 </div>
-
                 <div class="col-md-6 text-center text-md-end">
                     <div class="signature-block">
-                        <div class="crafted-by">
-                            Designed & Built by <i class="fas fa-heart heart"></i>
-                        </div>
+                        <div class="crafted-by">Designed & Built by <i class="fas fa-heart heart"></i></div>
                         <a href="https://www.linkedin.com/in/atchut-reddy-8008ar/" target="_blank" class="name-highlight" title="Visit LinkedIn Profile">
                             ATCHUT REDDY
                             <div class="linkedin-icon">
@@ -900,34 +357,15 @@
                         </a>
                     </div>
                 </div>
-
             </div>
         </div>
     </footer>
 
     <div class="ticker-container">
         <div class="ticker-wrapper">
-            {% for _ in "12345678"|make_list %}
-            <div class="ticker-item">
-                <span class="ticker-symbol">NIFTY</span>
-                <span class="ticker-price">25,175.40</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 0.51%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">BANKNIFTY</span>
-                <span class="ticker-price">59,452.30</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 0.34%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">FINNIFTY</span>
-                <span class="ticker-price">26,810.15</span>
-                <span class="text-red ms-1"><i class="fas fa-caret-down"></i> 0.16%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">MIDCPNIFTY</span>
-                <span class="ticker-price">12,120.00</span>
-                <span class="text-green ms-1"><i class="fas fa-caret-up"></i> 1.10%</span>
-            </div>
+            {% for _ in "12345"|make_list %}
+            <div class="ticker-item"><span class="ticker-symbol">NIFTY</span> <span class="ticker-price">25,175.40</span> <span class="text-green ms-1">▲ 0.51%</span></div>
+            <div class="ticker-item"><span class="ticker-symbol">BANKNIFTY</span> <span class="ticker-price">59,452.30</span> <span class="text-green ms-1">▲ 0.34%</span></div>
             {% endfor %}
         </div>
     </div>
@@ -939,52 +377,54 @@
     (function () {
       if (!window.CanvasJS || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-      const dpsCandles = [], dpsFastMA = [], dpsMediumMA = [];
-      let x = 0, lastClose = 25000, closes = [];
-      
+      // Multiple layered waves for depth and premium "alive" feel
+      const layers = [
+        { amplitude: 800, frequency: 0.001, speed: 0.0008, color: "rgba(0, 255, 157, 0.25)", offset: 0 },    // Main green wave
+        { amplitude: 600, frequency: 0.0015, speed: 0.0012, color: "rgba(64, 192, 255, 0.20)", offset: Math.PI / 2 }, // Cyan layer
+        { amplitude: 400, frequency: 0.002, speed: 0.0015, color: "rgba(0, 255, 157, 0.15)", offset: Math.PI }  // Subtle green
+      ];
+
       const chart = new CanvasJS.Chart("chartContainer", {
-        animationEnabled: false,
+        animationEnabled: true,
+        animationDuration: 1500, /* Very long smooth transitions */
         backgroundColor: "transparent",
         toolTip: { enabled: false },
-        axisX: { lineThickness:0, tickLength:0, labelFormatter:()=>"", gridThickness: 0 },
-        axisY: { lineThickness:0, tickLength:0, labelFormatter:()=>"", gridThickness: 0 },
-        data: [
-          { 
-            type:"candlestick", 
-            risingColor:"rgba(0, 255, 157, 0.3)", 
-            fallingColor:"rgba(255, 77, 77, 0.3)", 
-            color: "rgba(80,80,80,0.5)", 
-            dataPoints:dpsCandles 
-          },
-          { type:"line", lineColor:"rgba(0, 255, 157, 0.4)", markerSize:0, dataPoints:dpsFastMA },
-          { type:"line", lineColor:"rgba(64, 192, 255, 0.4)", markerSize:0, dataPoints:dpsMediumMA }
-        ]
+        axisX: { lineThickness: 0, tickLength: 0, labelFormatter: () => "", gridThickness: 0 },
+        axisY: { lineThickness: 0, tickLength: 0, labelFormatter: () => "", gridThickness: 0 },
+        data: layers.map(layer => ({
+          type: "splineArea",
+          fillOpacity: layer.color.split(',')[3].slice(0, -1),
+          color: layer.color.split(', ').slice(0, 3).join(', ') + ')',
+          lineThickness: 0,
+          markerSize: 0,
+          dataPoints: []
+        }))
       });
 
-      const FAST = 7, MID = 17, WIN = 60;
-      function update() {
-        const open = lastClose;
-        const close = +(open + (Math.random() - 0.48) * 30).toFixed(2);
-        const high = Math.max(open, close) + Math.random() * 10;
-        const low = Math.min(open, close) - Math.random() * 10;
-        dpsCandles.push({ x, y:[open, high, low, close] });
-        closes.push(close);
-        lastClose = close;
+      const WIN = 300; /* Extra long for seamless endless flow */
+      let time = 0;
 
-        if (closes.length >= FAST) dpsFastMA.push({ x, y: closes.slice(-FAST).reduce((a,b)=>a+b)/FAST });
-        if (closes.length >= MID) dpsMediumMA.push({ x, y: closes.slice(-MID).reduce((a,b)=>a+b)/MID });
+      function updateWaves() {
+        layers.forEach((layer, index) => {
+          const dps = chart.options.data[index].dataPoints;
+          dps.length = 0; // Clear and rebuild for smooth redraw
 
-        x++;
-        if (dpsCandles.length > WIN) {
-          dpsCandles.shift(); closes.shift();
-          if (dpsFastMA.length) dpsFastMA.shift();
-          if (dpsMediumMA.length) dpsMediumMA.shift();
-        }
+          for (let x = 0; x < WIN; x++) {
+            const y = Math.sin((x + time * layer.speed) * layer.frequency + layer.offset) * layer.amplitude + 25000;
+            dps.push({ x, y });
+          }
+        });
+
+        time += 1;
         chart.render();
+        requestAnimationFrame(updateWaves);
       }
-      for(let i=0; i<WIN; i++) update();
-      const interval = setInterval(update, 200);
-      window.addEventListener("beforeunload", () => clearInterval(interval));
+
+      // Initial fill
+      updateWaves();
+
+      // Pure RAF loop – maximum smoothness, no interval lag
+      requestAnimationFrame(updateWaves);
     })();
     </script>
 

@@ -296,14 +296,20 @@
                 </div>
                 <div class="card-body">
                     <ol class="how-to-list list-unstyled mb-0">
-                        <li>Go to <a href="https://kite.zerodha.com" target="_blank" class="text-info">Zerodha Kite</a></li>
-                        <li>Login to your account</li>
-                        <li>Go to <strong>Developer Console</strong></li>
-                        <li>Create a new app or use existing one</li>
-                        <li>Copy the API Key and Secret Key</li>
-                        <li>Your Zerodha User ID and Password are your login credentials</li>
-                        <li>For TOTP Secret: Profile → Two Factor Authentication → TOTP</li>
+                        <li>Login to <a href="https://developers.kite.trade/login" target="_blank" rel="noopener noreferrer">Zerodha Developer Console</a> with your Zerodha credentials</li>
+                        <li>Go to <strong>My Apps</strong> → Create new app (or select existing)</li>
+                        <li>Copy <strong>API Key</strong> and <strong>API Secret</strong></li>
+                        <li><strong>For automated trading & real-time data</strong> (essential for NIFTY strategies):  
+                            Subscribe to <strong>Connect</strong> plan — <strong>₹500/month per app</strong> (auto-renews; includes WebSocket live data + historical candles)</li>
+                        <li><strong>Free Personal tier</strong>: Allows basic order placement & account access (no live/historical data)</li>
+                        <li>User ID & Password = your regular Kite login credentials</li>
+                        <li>TOTP Secret (recommended): Zerodha Console → Profile → Two Factor Authentication → TOTP</li>
                     </ol>
+                    
+                    <small class="text-muted d-block mt-3">
+                        ₹500/month Connect plan renews automatically via developer console billing.  
+                        Start with free Personal tier to test basic setup.
+                    </small>
                 </div>
             </div>
 
