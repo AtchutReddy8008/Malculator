@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}NIFTY Trading Bot{% endblock %}</title>
+    <title>{% block title %}NIFTY Trading Algo{% endblock %}</title>
    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -236,8 +236,8 @@
                 <ul class="navbar-nav ms-auto align-items-center">
                     {% if user.is_authenticated %}
                         <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i> Dashboard</a></li>
-                        <li class="nav-item"><a class="nav-link" href="{% url 'broker' %}"><i class="fas fa-plug me-1"></i> Broker</a></li>
-                        <li class="nav-item"><a class="nav-link" href="{% url 'pnl_calendar' %}"><i class="fas fa-calendar-alt me-1"></i> PnL</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'broker' %}"><i class="fas fa-database me-1"></i> Broker credentials</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'pnl_calendar' %}"><i class="fas fa-calendar-alt me-1"></i> Portfolio</a></li>
                         <li class="nav-item"><a class="nav-link" href="{% url 'strategies_list' %}"><i class="fas fa-brain me-1"></i> Strategies</a></li>
                         <li class="nav-item dropdown ms-lg-3">
                             <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
