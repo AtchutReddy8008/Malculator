@@ -563,6 +563,10 @@ def strategies_list(request):
     }
     return render(request, 'trading/strategies_list.html', context)
 
+@login_required
+def about_us(request):
+    return render(request,'trading/about.html')
+
 
 @login_required
 def coming_soon_placeholder(request):

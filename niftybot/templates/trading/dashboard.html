@@ -5,177 +5,199 @@
 {% block extra_css %}
 <style>
     :root {
-        --bg: #0d1117;
-        --card-bg: rgba(22, 27, 34, 0.82);
-        --card-border: rgba(88, 101, 242, 0.18);
-        --text: #e6edf3;
-        --text-muted: #8b949e;
-        --primary: #58a6ff;
-        --success: #3fb950;
-        --danger: #f85149;
-        --warning: #d29922;
-        --glow-success: rgba(63, 185, 80, 0.45);
-        --glow-danger: rgba(248, 81, 73, 0.45);
-
-        --line-green: rgba(63, 185, 80, 0.85);
-        --line-red:   rgba(248, 81, 73, 0.85);
-        --candle-green: #34d399;
-        --candle-red:   #ff6b6b;
+        --bg: #0a0e17;
+        --card-bg: rgba(20, 25, 35, 0.78);
+        --card-border: rgba(88, 166, 255, 0.16);
+        --glass-border: rgba(100, 180, 255, 0.20);
+        --text: #e9effa;
+        --text-muted: #a0a8b8;
+        --primary: #60a5fa;
+        --primary-dark: #3b82f6;
+        --success: #34d399;
+        --danger: #f87171;
+        --warning: #fbbf24;
+        --glow-success: 0 0 20px rgba(52, 211, 153, 0.55);
+        --glow-danger: 0 0 18px rgba(248, 113, 113, 0.45);
+        --glow-primary: 0 0 22px rgba(96, 165, 250, 0.55);
     }
 
     body {
         background: var(--bg);
         color: var(--text);
-        overflow-x: hidden;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
 
-    /* Background layer - full viewport height */
+    /* Background - elegant & subtle */
     .trading-bg {
         position: fixed;
         inset: 0;
-        pointer-events: none;
         z-index: -2;
-        overflow: hidden;
-        background: #0d1117;
+        pointer-events: none;
+        background: radial-gradient(circle at 30% 70%, rgba(30, 58, 138, 0.14), transparent 65%);
     }
 
     .trading-bg::before {
         content: '';
         position: absolute;
         inset: 0;
-        background: linear-gradient(to bottom, 
-            rgba(13,17,23,0.92) 0%, 
-            rgba(13,17,23,0.55) 50%, 
-            rgba(13,17,23,0.88) 100%);
-        z-index: 2;
+        background: linear-gradient(135deg, rgba(10, 14, 23, 0.94) 0%, rgba(10, 14, 23, 0.78) 100%);
+        backdrop-filter: blur(3px);
     }
 
+    /* Subtle animated flow lines */
     .market-flow {
         position: absolute;
-        width: 200%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        animation: flowRight 60s linear infinite;
+        inset: 0;
+        opacity: 0.3;
     }
 
     .flow-line {
+        position: absolute;
+        height: 1.2px;
+        width: 180%;
+        background: linear-gradient(90deg, transparent, var(--primary) 35%, transparent 65%);
+        filter: blur(1.2px);
+        opacity: 0.55;
+        animation: flow 100s linear infinite;
+    }
+
+    .flow-line:nth-child(odd) {
+        background: linear-gradient(90deg, transparent, var(--success) 35%, transparent 65%);
+    }
+
+    @keyframes flow {
+        0% { transform: translateX(-45%); }
+        100% { transform: translateX(45%); }
+    }
+
+    /* Cards & Glassmorphism */
+    .card, .stat-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
+        box-shadow: 0 12px 35px rgba(0,0,0,0.38);
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+        overflow: hidden;
         position: relative;
-        height: 2.4px;
-        background: linear-gradient(90deg, 
-            transparent 0%, 
-            var(--line-green) 25%, 
-            #a5f3c0 45%, 
-            var(--line-red) 55%, 
-            #ff9999 75%, 
-            transparent 100%);
-        filter: blur(0.8px);
-        opacity: 0.7;
-        box-shadow: 
-            0 0 12px rgba(63, 185, 80, 0.55),
-            0 0 22px rgba(248, 81, 73, 0.45);
     }
 
-    .flow-red {
-        background: linear-gradient(90deg, 
-            transparent 0%, 
-            var(--line-red) 25%, 
-            #ff9999 45%, 
-            var(--line-green) 55%, 
-            #a5f3c0 75%, 
-            transparent 100%);
-        box-shadow: 
-            0 0 12px rgba(248, 81, 73, 0.55),
-            0 0 22px rgba(63, 185, 80, 0.45);
+    .card:hover, .stat-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+        border-color: rgba(96, 165, 250, 0.38);
     }
 
-    .flow-1 { top: 12%; animation: zigzagFlow 18s ease-in-out infinite alternate; }
-    .flow-2 { top: 28%; animation: zigzagFlow 22s ease-in-out infinite alternate; }
-    .flow-3 { top: 44%; animation: zigzagFlow 26s ease-in-out infinite alternate; }
-    .flow-4 { top: 62%; animation: zigzagFlow 20s ease-in-out infinite alternate; }
-    .flow-5 { top: 79%; animation: zigzagFlow 24s ease-in-out infinite alternate; }
-
-    @keyframes flowRight {
-        0%   { transform: translateX(0%);    }
-        100% { transform: translateX(-50%);  }
+    .stat-card {
+        padding: 2rem 1.6rem;
+        text-align: center;
     }
 
-    @keyframes zigzagFlow {
-        0%, 100%  { transform: translateY(0) scaleY(1);   }
-        25%       { transform: translateY(-14px) scaleY(1.07); }
-        50%       { transform: translateY(0) scaleY(1);   }
-        75%       { transform: translateY(14px) scaleY(1.07); }
+    .stat-card .icon {
+        font-size: 2.1rem;
+        margin-bottom: 0.9rem;
+        opacity: 0.9;
     }
 
-    .candles-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 1;
+    .stat-card .value {
+        font-size: 2.6rem;
+        font-weight: 800;
+        letter-spacing: -1.2px;
+        line-height: 1;
+        margin-bottom: 0.5rem;
     }
 
-    .candle-group {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        animation: candleDrift 75s linear infinite;
+    .stat-card .label {
+        font-size: 0.95rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 500;
     }
 
-    .candle {
-        position: absolute;
-        width: 3.2px;
-        border-radius: 1.6px;
-        opacity: 0.6;
-        box-shadow: 0 0 10px currentColor;
-        animation: candleFlicker 7s infinite alternate;
+    .status-running {
+        color: var(--success);
+        font-weight: 800;
+        text-shadow: var(--glow-success);
     }
 
-    .candle-green { background: var(--candle-green); }
-    .candle-red   { background: var(--candle-red);   }
+    .profit { color: var(--success) !important; text-shadow: var(--glow-success); }
+    .loss   { color: var(--danger)   !important; text-shadow: var(--glow-danger); }
 
-    .group-1 .candle-1  { left: 8%;  height: 18%; top: 15%; animation-delay: 0s;    }
-    .group-1 .candle-2  { left: 17%; height: 32%; top: 38%; animation-delay: -3s;  }
-    .group-1 .candle-3  { left: 25%; height: 14%; top: 65%; animation-delay: -6s;  }
-    .group-1 .candle-4  { left: 34%; height: 36%; top: 10%; animation-delay: -9s;  }
-    .group-1 .candle-5  { left: 43%; height: 22%; top: 55%; animation-delay: -1.5s;}
-
-    .group-2 .candle-1  { left: 12%; height: 26%; top: 22%; }
-    .group-2 .candle-2  { left: 21%; height: 19%; top: 48%; }
-    .group-2 .candle-3  { left: 29%; height: 33%; top: 18%; }
-    .group-2 .candle-4  { left: 38%; height: 24%; top: 62%; }
-    .group-2 .candle-5  { left: 47%; height: 29%; top: 32%; }
-
-    @keyframes candleDrift {
-        0%   { transform: translateX(-120%); }
-        100% { transform: translateX(120%);  }
-    }
-
-    @keyframes candleFlicker {
-        0%, 100% { opacity: 0.55; transform: scaleY(1);   }
-        40%      { opacity: 0.90; transform: scaleY(1.12); }
-        70%      { opacity: 0.65; transform: scaleY(0.96); }
-    }
-
-    /* Main content structure */
-    main {
-        flex: 1 0 auto;
-        position: relative;
-        z-index: 3;
-    }
-
-    .dashboard-content {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
+    /* Headings */
+    h1, h5 {
+        font-weight: 700;
+        letter-spacing: -0.6px;
     }
 
     h1 {
-        color: var(--primary);
-        text-shadow: 0 2px 12px rgba(88,166,255,0.28);
+        font-size: 2.6rem;
+        background: linear-gradient(90deg, #e9effa, #60a5fa, #a5d6ff, #60a5fa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-size: 200% auto;
+        animation: shine 6s linear infinite;
     }
 
+    @keyframes shine {
+        to { background-position: 200% center; }
+    }
+
+    /* Buttons */
+    .btn-primary {
+        background: var(--primary);
+        border: none;
+        font-weight: 600;
+        border-radius: 12px;
+        padding: 0.85rem 1.8rem;
+        box-shadow: 0 6px 18px rgba(96,165,250,0.4);
+        transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+        background: #3b82f6;
+        transform: translateY(-3px);
+        box-shadow: 0 12px 30px rgba(59,130,246,0.55);
+    }
+
+    .btn-outline-primary {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+
+    .btn-outline-primary:hover {
+        background: var(--primary);
+        color: white;
+    }
+
+    /* Table */
+    .table {
+        --bs-table-bg: transparent;
+        --bs-table-color: var(--text);
+        --bs-table-hover-bg: rgba(96,165,250,0.09);
+    }
+
+    .table thead th {
+        background: rgba(30, 40, 60, 0.65);
+        color: white;
+        border-bottom: 1px solid rgba(100,180,255,0.20);
+        text-transform: uppercase;
+        font-size: 0.86rem;
+        letter-spacing: 0.7px;
+    }
+
+    .table tbody tr:hover {
+        background: rgba(96,165,250,0.10);
+    }
+
+    .badge {
+        font-weight: 600;
+        padding: 0.55em 1.1em;
+        border-radius: 12px;
+    }
+
+    /* Animations */
     .fade-in-up {
         opacity: 0;
         transform: translateY(25px);
@@ -186,251 +208,85 @@
         to { opacity: 1; transform: translateY(0); }
     }
 
-    .stat-card {
-        background: var(--card-bg);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--card-border);
-        border-radius: 16px;
-        padding: 1.6rem;
-        text-align: center;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.35);
-        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-        animation: fadeUp 1s ease-out forwards;
-        opacity: 0;
-        animation-delay: calc(var(--delay) * 0.18s);
-    }
+    .stat-card:nth-child(1) { animation-delay: 0.15s; }
+    .stat-card:nth-child(2) { animation-delay: 0.3s;  }
+    .stat-card:nth-child(3) { animation-delay: 0.45s; }
+    .stat-card:nth-child(4) { animation-delay: 0.6s;  }
 
-    .stat-card:hover {
-        transform: translateY(-10px);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-    }
-
-    .stat-card .value {
-        font-size: 2.1rem;
-        font-weight: 800;
-        margin-bottom: 0.6rem;
-        letter-spacing: -0.5px;
-    }
-
-    .stat-card .label {
-        color: var(--text-muted);
-        font-size: 0.95rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    .status-running {
-        color: var(--success);
-        animation: pulseGlow 2.2s infinite alternate;
-    }
-
-    @keyframes pulseGlow {
-        from { text-shadow: 0 0 10px var(--glow-success); }
-        to   { text-shadow: 0 0 24px var(--glow-success); }
-    }
-
-    .profit {
-        color: var(--success) !important;
-    }
-
-    .loss {
-        color: var(--danger) !important;
-    }
-
-    .card {
-        background: var(--card-bg);
-        backdrop-filter: blur(14px);
-        border: 1px solid var(--card-border);
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-        transition: all 0.45s ease;
-    }
-
-    .card:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 20px 50px rgba(0,0,0,0.45);
-    }
-
-    .card-header {
-        background: linear-gradient(135deg, #161b22, #21262d);
-        border-bottom: none;
-        padding: 1.25rem 1.5rem;
-        color: var(--text);
-        font-weight: 600;
-    }
-
-    .btn-lg {
-        padding: 0.75rem 1.5rem;
-        font-weight: 600;
-        border-radius: 10px;
-        transition: all 0.35s ease;
-    }
-
-    .btn-primary-outline {
-        border: 2px solid var(--primary);
-        color: var(--primary);
-        background: transparent;
-    }
-
-    .btn-primary-outline:hover {
-        background: var(--primary);
-        color: white;
-    }
-
-    .table-hover tbody tr:hover {
-        background: rgba(88, 166, 255, 0.08);
-        transform: scale(1.005);
-    }
-
-    .quick-nav .btn {
-        height: 60px;
-        font-size: 1.05rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.6rem;
-        border-radius: 12px;
-        transition: all 0.4s ease;
-    }
-
-    .quick-nav .btn:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 24px rgba(0,0,0,0.25);
-    }
-
-    /* Staggered animations */
-    .stat-card:nth-child(1) { animation-delay: 0.2s; }
-    .stat-card:nth-child(2) { animation-delay: 0.35s; }
-    .stat-card:nth-child(3) { animation-delay: 0.5s; }
-    .stat-card:nth-child(4) { animation-delay: 0.65s; }
-
-    .card:first-of-type  { animation-delay: 0.8s; }
-    .card:last-of-type   { animation-delay: 0.95s; }
-
-    /* Dashboard-specific small footer */
-    .dashboard-footer {
-        margin-top: 8rem;
-        margin-bottom: 1rem;
-        padding: 2rem 0;
-        text-align: center;
-        color: var(--text-muted);
-        border-top: 1px solid rgba(88, 101, 242, 0.15);
-        font-size: 0.95rem;
-        background: rgba(13, 17, 23, 0.7);
-        backdrop-filter: blur(10px);
-    }
-
-    .dashboard-footer strong {
-        color: var(--primary);
-    }
-
-    .dashboard-footer a {
-        color: var(--primary);
-        text-decoration: none;
-        transition: all 0.3s;
-    }
-
-    .dashboard-footer a:hover {
-        color: #79c0ff;
-        text-decoration: underline;
-    }
-
-    /* Mobile optimizations */
+    /* Mobile adjustments */
     @media (max-width: 767px) {
-        .stat-card .value {
-            font-size: 1.8rem;
-        }
-        .quick-nav .btn {
-            height: auto;
-            padding: 1rem 0.8rem;
-            font-size: 0.95rem;
-        }
-        h1 {
-            font-size: 2rem;
-        }
+        h1 { font-size: 2.1rem; }
+        .stat-card .value { font-size: 2.1rem; }
+        .stat-card { padding: 1.6rem 1.3rem; }
+        .stat-card .icon { font-size: 1.8rem; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<!-- Background layer -->
+<!-- Background -->
 <div class="trading-bg">
     <div class="market-flow">
-        <div class="flow-line flow-1"></div>
-        <div class="flow-line flow-2 flow-red"></div>
-        <div class="flow-line flow-3"></div>
-        <div class="flow-line flow-4 flow-red"></div>
-        <div class="flow-line flow-5"></div>
-        <!-- Duplicate for seamless loop -->
-        <div class="flow-line flow-1"></div>
-        <div class="flow-line flow-2 flow-red"></div>
-        <div class="flow-line flow-3"></div>
-        <div class="flow-line flow-4 flow-red"></div>
-        <div class="flow-line flow-5"></div>
-    </div>
-
-    <div class="candles-layer">
-        <div class="candle-group group-1">
-            <div class="candle candle-green candle-1"></div>
-            <div class="candle candle-red candle-2"></div>
-            <div class="candle candle-green candle-3"></div>
-            <div class="candle candle-red candle-4"></div>
-            <div class="candle candle-green candle-5"></div>
-        </div>
-        <div class="candle-group group-2" style="animation-delay: -37.5s;">
-            <div class="candle candle-green candle-1"></div>
-            <div class="candle candle-red candle-2"></div>
-            <div class="candle candle-green candle-3"></div>
-            <div class="candle candle-red candle-4"></div>
-            <div class="candle candle-green candle-5"></div>
-        </div>
+        <div class="flow-line" style="top: 12%; animation-duration: 85s;"></div>
+        <div class="flow-line" style="top: 32%; animation-duration: 100s;"></div>
+        <div class="flow-line" style="top: 52%; animation-duration: 115s;"></div>
+        <div class="flow-line" style="top: 72%; animation-duration: 95s;"></div>
     </div>
 </div>
 
 <main class="flex-grow-1">
     <div class="container-fluid py-4 dashboard-content">
-        <div class="row">
-            <div class="col-md-12">
-                <h1 class="mb-5 fade-in-up"><i class="fas fa-tachometer-alt me-3"></i> Trading Dashboard</h1>
+        <div class="row mb-5">
+            <div class="col-12">
+                <h1 class="fade-in-up">
+                    <i class="fas fa-tachometer-alt me-3"></i>
+                    Trading Dashboard
+                </h1>
             </div>
         </div>
 
-        <!-- Quick Stats -->
+        <!-- === Quick Stats - Most important cards === -->
         <div class="row g-4">
-            <div class="col-md-3 col-6">
-                <div class="stat-card">
-                    <div class="value" id="bot-status-value">
+            <!-- Algo Status - most prominent -->
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card fade-in-up">
+                    <i class="fas fa-power-off icon status-running"></i>
+                    <div class="value status-running" id="bot-status-value">
                         {% if bot_status.is_running %}
-                            <i class="fas fa-play-circle text-success status-running me-2"></i>
                             Running
                         {% else %}
-                            <i class="fas fa-stop-circle text-danger me-2"></i>
                             Stopped
                         {% endif %}
                     </div>
-                    <div class="label">Aglo Status</div>
+                    <div class="label">Algo Status</div>
                 </div>
             </div>
-            <div class="col-md-3 col-6">
-                <div class="stat-card">
+
+            <!-- Today's P&L - second most important -->
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card fade-in-up">
+                    <i class="fas fa-rupee-sign icon" style="color: var(--success);"></i>
                     <div class="value {% if daily_pnl.pnl >= 0 %}profit{% else %}loss{% endif %}" id="today-pnl">
                         ₹{{ daily_pnl.pnl|default:0|floatformat:2 }}
                     </div>
                     <div class="label">Today's P&L</div>
                 </div>
             </div>
-            <div class="col-md-3 col-6">
-                <div class="stat-card">
+
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card fade-in-up">
+                    <i class="fas fa-calendar-week icon" style="color: var(--primary);"></i>
                     <div class="value {% if weekly_pnl >= 0 %}profit{% else %}loss{% endif %}" id="weekly-pnl">
                         ₹{{ weekly_pnl|floatformat:2 }}
                     </div>
                     <div class="label">Weekly P&L</div>
                 </div>
             </div>
-            <div class="col-md-3 col-6">
-                <div class="stat-card">
+
+            <div class="col-lg-3 col-md-6">
+                <div class="stat-card fade-in-up">
+                    <i class="fas fa-calendar-month icon" style="color: var(--primary);"></i>
                     <div class="value {% if monthly_pnl >= 0 %}profit{% else %}loss{% endif %}" id="monthly-pnl">
                         ₹{{ monthly_pnl|floatformat:2 }}
                     </div>
@@ -439,105 +295,89 @@
             </div>
         </div>
 
-        <!-- Bot Control & Performance -->
+        <!-- Control & Summary -->
         <div class="row mt-5 g-4">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-robot me-2"></i> Algo Control Panel</h5>
+            <div class="col-lg-8">
+                <div class="card fade-in-up">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-robot me-2"></i> Algo Control</h5>
+                        <span class="badge {% if bot_status.is_running %}bg-success{% else %}bg-danger{% endif %} px-4 py-2 fs-6">
+                            {{ bot_status.status|default:"live" }}
+                        </span>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-6">
-                                <h6 class="mb-3">Current Status</h6>
-                                <p><strong>Status:</strong> 
-                                    <span id="bot-status-detail">
-                                        {% if bot_status.is_running %}
-                                            <span class="status-running"><i class="fas fa-play-circle me-1"></i> RUNNING</span>
-                                        {% else %}
-                                            <span class="text-danger"><i class="fas fa-stop-circle me-1"></i> STOPPED</span>
-                                        {% endif %}
-                                    </span>
-                                </p>
-                                <p><strong>Last Started:</strong> 
-                                    {% if bot_status.last_started %}
-                                        {{ bot_status.last_started|date:"Y-m-d H:i:s" }}
-                                    {% else %}
-                                        Never
-                                    {% endif %}
-                                </p>
-                                <p><strong>Last Stopped:</strong> 
-                                    {% if bot_status.last_stopped %}
-                                        {{ bot_status.last_stopped|date:"Y-m-d H:i:s" }}
-                                    {% else %}
-                                        Never
-                                    {% endif %}
-                                </p>
-                                <p><strong>Current P&L:</strong> 
-                                    <span id="current-pnl" class="{% if bot_status.current_unrealized_pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold">
-                                        ₹{{ bot_status.current_unrealized_pnl|floatformat:2 }}
-                                    </span>
-                                </p>
+                                <ul class="list-unstyled mb-0">
+                                    <li class="mb-4">
+                                        <strong>Status:</strong> 
+                                        <span id="bot-status-detail" class="{% if bot_status.is_running %}status-running{% else %}text-danger{% endif %} fw-bold ms-2">
+                                            {% if bot_status.is_running %}RUNNING{% else %}STOPPED{% endif %}
+                                        </span>
+                                    </li>
+                                    <li class="mb-4">
+                                        <strong>Last Started:</strong> 
+                                        <span class="ms-2">{{ bot_status.last_started|default:"Never"|date:"d M Y H:i" }}</span>
+                                    </li>
+                                    <li class="mb-4">
+                                        <strong>Current P&L:</strong> 
+                                        <span id="current-pnl" class="{% if bot_status.current_unrealized_pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold ms-2">
+                                            ₹{{ bot_status.current_unrealized_pnl|floatformat:2|default:"0.00" }}
+                                        </span>
+                                    </li>
+                                </ul>
                             </div>
                             <div class="col-md-6">
-                                <h6 class="mb-3">Quick Actions</h6>
-                                <div class="d-grid gap-3">
+                                <div class="d-grid gap-3 mt-3 mt-md-0">
                                     <a href="{% url 'strategies_list' %}" class="btn btn-primary btn-lg">
-                                        <i class="fas fa-brain me-2"></i> View Strategies & Run Algo
-                                    </a>
-                                    <a href="{% url 'strategies_list' %}" class="btn btn-outline-primary btn-lg">
-                                        <i class="fas fa-cogs me-2"></i> Manage Algos
+                                        <i class="fas fa-brain me-2"></i> Manage & Run Algo
                                     </a>
                                 </div>
                             </div>
                         </div>
 
                         {% if bot_status.last_error %}
-                            <div class="mt-4 alert alert-danger" id="last-error-alert">
-                                <strong><i class="fas fa-exclamation-circle me-2"></i> Last Error:</strong>
-                                <pre class="mb-0 mt-2 bg-transparent border-0 text-danger" style="font-size: 0.92rem;">{{ bot_status.last_error|truncatechars:400 }}</pre>
+                            <div class="alert alert-danger mt-4 mb-0" role="alert">
+                                <strong>Last Error:</strong>
+                                <pre class="mb-0 mt-2 bg-transparent border-0 text-danger" style="font-size: 0.92rem; white-space: pre-wrap;">{{ bot_status.last_error }}</pre>
                             </div>
                         {% endif %}
                     </div>
                 </div>
             </div>
 
-            <div class="col-md-4">
-                <div class="card h-100">
+            <div class="col-lg-4">
+                <div class="card h-100 fade-in-up">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Summary</h5>
+                        <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Overview</h5>
                     </div>
                     <div class="card-body">
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Win Rate:</strong>
-                            <span class="fw-bold">{{ win_rate }}%</span>
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Win Rate</span>
+                            <strong class="fs-5">{{ win_rate|default:"0" }}%</strong>
                         </div>
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Weekly Trades:</strong>
-                            <span class="fw-bold">{{ weekly_trades }}</span>
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Weekly Trades</span>
+                            <strong class="fs-5">{{ weekly_trades|default:"0" }}</strong>
                         </div>
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Monthly Trades:</strong>
-                            <span class="fw-bold">{{ monthly_trades }}</span>
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Monthly Trades</span>
+                            <strong class="fs-5">{{ monthly_trades|default:"0" }}</strong>
                         </div>
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Best Day:</strong>
-                            <span class="profit fw-bold">₹{{ performance.best_day.pnl|floatformat:2|default:"0.00" }}</span>
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Best Day</span>
+                            <span class="profit fs-5">₹{{ performance.best_day.pnl|floatformat:2|default:"0.00" }}</span>
                         </div>
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Worst Day:</strong>
-                            <span class="loss fw-bold">₹{{ performance.worst_day.pnl|floatformat:2|default:"0.00" }}</span>
-                        </div>
-                        <div class="mb-3 d-flex justify-content-between">
-                            <strong>Current Streak:</strong>
-                            <span class="fw-bold">{{ performance.current_streak }} days</span>
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Worst Day</span>
+                            <span class="loss fs-5">₹{{ performance.worst_day.pnl|floatformat:2|default:"0.00" }}</span>
                         </div>
 
                         <hr class="my-4">
 
                         <div class="text-center">
                             <a href="{% url 'pnl_calendar' %}" class="btn btn-outline-primary">
-                                <i class="fas fa-calendar-alt me-2"></i> View P&L Calendar
+                                <i class="fas fa-calendar-alt me-2"></i> View Calendar
                             </a>
                         </div>
                     </div>
@@ -548,20 +388,20 @@
         <!-- Recent Trades -->
         <div class="row mt-5">
             <div class="col-12">
-                <div class="card">
+                <div class="card fade-in-up">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i> Recent Trades</h5>
+                        <h5 class="mb-0"><i class="fas fa-history me-2"></i> Recent Trades</h5>
                         <a href="#" class="btn btn-sm btn-outline-primary">View All Trades</a>
                     </div>
                     <div class="card-body p-0">
                         {% if recent_trades %}
                             <div class="table-responsive">
                                 <table class="table table-hover mb-0">
-                                    <thead class="table-dark">
+                                    <thead>
                                         <tr>
                                             <th>Time</th>
                                             <th>Symbol</th>
-                                            <th>Type</th>
+                                            <th>Direction</th>
                                             <th>Qty</th>
                                             <th>Entry</th>
                                             <th>Exit</th>
@@ -575,12 +415,12 @@
                                                 <td>{{ trade.entry_time|date:"H:i:s" }}</td>
                                                 <td class="fw-medium">{{ trade.symbol }}</td>
                                                 <td>
-                                                    {% if "BUY" in trade.metadata.action %}
-                                                        <span class="badge bg-success px-3">BUY</span>
-                                                    {% elif "SELL" in trade.metadata.action %}
-                                                        <span class="badge bg-danger px-3">SELL</span>
+                                                    {% if "BUY" in trade.metadata.action|upper %}
+                                                        <span class="badge bg-success">BUY</span>
+                                                    {% elif "SELL" in trade.metadata.action|upper %}
+                                                        <span class="badge bg-danger">SELL</span>
                                                     {% else %}
-                                                        <span class="badge bg-secondary px-3">{{ trade.metadata.action }}</span>
+                                                        <span class="badge bg-secondary">{{ trade.metadata.action }}</span>
                                                     {% endif %}
                                                 </td>
                                                 <td>{{ trade.quantity }}</td>
@@ -589,14 +429,14 @@
                                                     {% if trade.exit_price %}
                                                         ₹{{ trade.exit_price|floatformat:2 }}
                                                     {% else %}
-                                                        <span class="text-muted">-</span>
+                                                        —
                                                     {% endif %}
                                                 </td>
                                                 <td class="{% if trade.pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold">
                                                     ₹{{ trade.pnl|floatformat:2 }}
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-{% if trade.status == 'EXECUTED' %}success{% elif trade.status == 'PENDING' %}warning{% else %}danger{% endif %} px-3 py-2">
+                                                    <span class="badge bg-{% if trade.status == 'EXECUTED' %}success{% elif trade.status == 'PENDING' %}warning{% else %}danger{% endif %}">
                                                         {{ trade.status }}
                                                     </span>
                                                 </td>
@@ -608,7 +448,7 @@
                         {% else %}
                             <div class="text-center py-5 text-muted">
                                 <i class="fas fa-history fa-3x mb-3 opacity-50"></i>
-                                <p>No recent trades found.</p>
+                                <p>No recent trades executed yet.</p>
                             </div>
                         {% endif %}
                     </div>
@@ -617,11 +457,11 @@
         </div>
 
         <!-- Quick Navigation -->
-        <div class="row mt-5 quick-nav">
+        <div class="row mt-5">
             <div class="col-12">
-                <div class="card">
+                <div class="card fade-in-up">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-compass me-2"></i> Quick Navigation</h5>
+                        <h5 class="mb-0"><i class="fas fa-compass me-2"></i> Quick Actions</h5>
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
@@ -651,88 +491,46 @@
             </div>
         </div>
 
-        <!-- Small Dashboard Footer -->
-        <div class="dashboard-footer mt-5">
-            <p>
-                <strong>Dashboard</strong> • 
-                <a href="{% url 'strategies_list' %}">Strategies</a> • 
-                <a href="{% url 'broker' %}">Broker Settings</a>
-            </p>
-            <p class="text-muted small">
-                © 2026 Trade with Naman • All rights reserved • 
-                <span class="text-primary">Designed with ❤️ by Atchut Reddy</span>
-            </p>
-        </div>
-    </div> <!-- Closing container-fluid -->
+    </div>
 </main>
 
 <script>
-// Full dashboard refresh every 45 seconds
+// Auto-refresh dashboard stats
 function refreshDashboard() {
     fetch('{% url "dashboard_stats" %}')
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
+        .then(r => r.json())
         .then(data => {
-            // Bot Status (Quick Stats card)
-            const statusValueEl = document.getElementById('bot-status-value');
-            const statusDetailEl = document.getElementById('bot-status-detail');
-            if (data.bot_running) {
-                statusValueEl.innerHTML = '<i class="fas fa-play-circle text-success status-running me-2"></i> Running';
-                statusDetailEl.innerHTML = '<span class="status-running"><i class="fas fa-play-circle me-1"></i> RUNNING</span>';
-            } else {
-                statusValueEl.innerHTML = '<i class="fas fa-stop-circle text-danger me-2"></i> Stopped';
-                statusDetailEl.innerHTML = '<span class="text-danger"><i class="fas fa-stop-circle me-1"></i> STOPPED</span>';
-            }
+            // Bot status
+            document.getElementById('bot-status-value').innerHTML = data.bot_running 
+                ? 'Running' 
+                : 'Stopped';
+            document.getElementById('bot-status-detail').innerHTML = data.bot_running 
+                ? '<span class="status-running">RUNNING</span>' 
+                : '<span class="text-danger">STOPPED</span>';
 
-            // Today's P&L
-            const todayEl = document.getElementById('today-pnl');
-            const todayValue = data.daily_pnl.toFixed(2);
-            todayEl.textContent = `₹${todayValue}`;
-            todayEl.className = `value ${data.daily_pnl >= 0 ? 'profit' : 'loss'}`;
+            // P&L values
+            ['today-pnl', 'weekly-pnl', 'monthly-pnl'].forEach(id => {
+                const el = document.getElementById(id);
+                const key = id.split('-')[0];
+                const value = data[`${key}_pnl`].toFixed(2);
+                el.textContent = `₹${value}`;
+                el.className = `value ${data[`${key}_pnl`] >= 0 ? 'profit' : 'loss'}`;
+            });
 
-            // Weekly P&L
-            const weeklyEl = document.getElementById('weekly-pnl');
-            const weeklyValue = data.weekly_pnl.toFixed(2);
-            weeklyEl.textContent = `₹${weeklyValue}`;
-            weeklyEl.className = `value ${data.weekly_pnl >= 0 ? 'profit' : 'loss'}`;
-
-            // Monthly P&L
-            const monthlyEl = document.getElementById('monthly-pnl');
-            const monthlyValue = data.monthly_pnl.toFixed(2);
-            monthlyEl.textContent = `₹${monthlyValue}`;
-            monthlyEl.className = `value ${data.monthly_pnl >= 0 ? 'profit' : 'loss'}`;
-
-            // Current Unrealized P&L (in Bot Control card)
-            const currentPnlEl = document.getElementById('current-pnl');
-            if (currentPnlEl) {
-                const currentValue = data.current_unrealized_pnl.toFixed(2);
-                currentPnlEl.textContent = `₹${currentValue}`;
-                currentPnlEl.className = data.current_unrealized_pnl >= 0 ? 'profit fw-bold' : 'loss fw-bold';
-            }
-
-            // Last Error alert
-            const errorAlert = document.getElementById('last-error-alert');
-            if (data.last_error) {
-                if (errorAlert) {
-                    errorAlert.innerHTML = `
-                        <strong><i class="fas fa-exclamation-circle me-2"></i> Last Error:</strong>
-                        <pre class="mb-0 mt-2 bg-transparent border-0 text-danger" style="font-size: 0.92rem;">${data.last_error}</pre>
-                    `;
-                    errorAlert.style.display = 'block';
-                }
-            } else if (errorAlert) {
-                errorAlert.style.display = 'none';
+            // Current unrealized P&L
+            const currentEl = document.getElementById('current-pnl');
+            if (currentEl) {
+                const val = data.current_unrealized_pnl.toFixed(2);
+                currentEl.textContent = `₹${val}`;
+                currentEl.className = data.current_unrealized_pnl >= 0 
+                    ? 'profit fw-bold' 
+                    : 'loss fw-bold';
             }
         })
-        .catch(err => {
-            console.warn('Dashboard stats refresh failed:', err);
-        });
+        .catch(() => {});
 }
 
-// Run immediately and then every 45 seconds
 setInterval(refreshDashboard, 45000);
-refreshDashboard();  // Initial load on page open
+refreshDashboard();
 </script>
 {% endblock %}

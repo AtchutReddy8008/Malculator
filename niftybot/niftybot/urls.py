@@ -38,6 +38,7 @@ urlpatterns = [
     # ───────────────────────────────────────────────
     # Main Strategies overview page (shows 4 cards)
     path('strategies/', views.strategies_list, name='strategies_list'),
+    path('about/',views.about_us,name='about'),
 
     # Short Strangle – full detailed control page
     # (renamed view reference for clarity - update views.py accordingly if renamed)

@@ -99,17 +99,6 @@ DATABASES = {
 # }
 #pip install psycopg2-binary
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'postgres',  # default DB
-#         'USER': 'postgres',
-#         'PASSWORD': 'your_db_password',
-#         'HOST': 'mydb.xxxxxx.ap-south-1.rds.amazonaws.com',
-#         'PORT': '5432',
-#     }
-# }
-
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 AUTH_PASSWORD_VALIDATORS = [
@@ -257,13 +246,12 @@ LOGGING = {
 
 
 # ───────────────────────────────────────────────
-# SECURITY SETTINGS (enable in production)
+# STATIC FILES (CSS, JS, Images)
 # ───────────────────────────────────────────────
 
-# Uncomment these in production:
-# SECURE_SSL_REDIRECT = True
-# SESSION_COOKIE_SECURE = True
-# CSRF_COOKIE_SECURE = True
-# SECURE_BROWSER_XSS_FILTER = True
-# SECURE_CONTENT_TYPE_NOSNIFF = True
-# X_FRAME_OPTIONS = 'DENY'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
