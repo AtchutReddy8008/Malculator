@@ -88,7 +88,7 @@ sudo apt install screen -y
 screen -S Django
 
 cd /root/web/niftybot
-source /root/web/venv/bin/activate
+source /root/calculator/venv/bin/activate
 
 python manage.py runserver 0.0.0.0:8000 --noreload
 
@@ -96,8 +96,9 @@ CTRL+A + D
 ----------------
 screen -S celery
 
-cd /root/web/niftybot
-source /root/web/venv/bin/activate
+cd /root/calculator/
+source /root/calculator/venv/bin/activate
+
 
 celery -A niftybot worker -l info --pool=gevent --concurrency=100
 
@@ -134,3 +135,26 @@ CTRL + C
 exit
 
 
+-----------------------------------------------------------------
+
+
+sudo apt update
+sudo apt install nginx python3-pip -y
+pip install gunicorn
+
+
+gunicorn niftybot.wsgi:application --bind 127.0.0.1:8000
+
+sudo nano /etc/nginx/sites-available/niftybot
+
+server {
+    listen 80;
+    server_name 13.200.11.202;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

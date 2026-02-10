@@ -40,4 +40,4 @@ l_capital_blocked_\u20b9": 113211}
 
 
 
-see actaually bot placing trade correctly and the target is 2050 but it will hit at 1582 because pnl glitch came so please me this how to correct this glitch
+see actaually bot placing trade correctly and the target is 2050 but it will hit at 1582 because of pnl glitch 5258.5 came so please me this how to correct this glitch 

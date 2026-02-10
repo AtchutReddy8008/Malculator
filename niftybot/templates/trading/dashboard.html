@@ -106,6 +106,7 @@
         letter-spacing: -1.2px;
         line-height: 1;
         margin-bottom: 0.5rem;
+        transition: all 0.4s ease;
     }
 
     .stat-card .label {
@@ -219,6 +220,17 @@
         .stat-card .value { font-size: 2.1rem; }
         .stat-card { padding: 1.6rem 1.3rem; }
         .stat-card .icon { font-size: 1.8rem; }
+    }
+
+    /* Number change animation */
+    .number-change {
+        animation: pulse 1.2s ease-out;
+    }
+
+    @keyframes pulse {
+        0%   { transform: scale(1.08); }
+        50%  { transform: scale(0.95); }
+        100% { transform: scale(1); }
     }
 </style>
 {% endblock %}
@@ -495,42 +507,85 @@
 </main>
 
 <script>
-// Auto-refresh dashboard stats
+// Auto-refresh dashboard stats - improved version
 function refreshDashboard() {
-    fetch('{% url "dashboard_stats" %}')
-        .then(r => r.json())
-        .then(data => {
-            // Bot status
-            document.getElementById('bot-status-value').innerHTML = data.bot_running 
-                ? 'Running' 
-                : 'Stopped';
-            document.getElementById('bot-status-detail').innerHTML = data.bot_running 
-                ? '<span class="status-running">RUNNING</span>' 
-                : '<span class="text-danger">STOPPED</span>';
+    const pnlElement = document.getElementById('current-pnl');
+    const statusElement = document.getElementById('bot-status-value');
+    const detailElement = document.getElementById('bot-status-detail');
 
-            // P&L values
+    // Optional: show updating state
+    if (pnlElement) pnlElement.style.opacity = '0.6';
+
+    fetch('{% url "dashboard_stats" %}')
+        .then(response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+        })
+        .then(data => {
+            // Current unrealized P&L
+            if (pnlElement) {
+                const val = data.current_unrealized_pnl.toFixed(2);
+                const oldVal = pnlElement.textContent.replace('₹', '').trim();
+                pnlElement.textContent = `₹${val}`;
+
+                // Animate only on change
+                if (oldVal !== val) {
+                    pnlElement.classList.add('number-change');
+                    setTimeout(() => pnlElement.classList.remove('number-change'), 1200);
+                }
+
+                // Color
+                pnlElement.className = data.current_unrealized_pnl >= 0 
+                    ? 'profit fw-bold ms-2 number-change' 
+                    : 'loss fw-bold ms-2 number-change';
+            }
+
+            // Bot status
+            if (statusElement) {
+                statusElement.textContent = data.bot_running ? 'Running' : 'Stopped';
+            }
+            if (detailElement) {
+                detailElement.innerHTML = data.bot_running 
+                    ? '<span class="status-running">RUNNING</span>' 
+                    : '<span class="text-danger">STOPPED</span>';
+            }
+
+            // Today/Weekly/Monthly P&L
             ['today-pnl', 'weekly-pnl', 'monthly-pnl'].forEach(id => {
                 const el = document.getElementById(id);
-                const key = id.split('-')[0];
-                const value = data[`${key}_pnl`].toFixed(2);
-                el.textContent = `₹${value}`;
-                el.className = `value ${data[`${key}_pnl`] >= 0 ? 'profit' : 'loss'}`;
+                if (el) {
+                    const key = id.split('-')[0];
+                    const value = data[`${key}_pnl`].toFixed(2);
+                    const oldVal = el.textContent.replace('₹', '').trim();
+                    el.textContent = `₹${value}`;
+
+                    if (oldVal !== value) {
+                        el.classList.add('number-change');
+                        setTimeout(() => el.classList.remove('number-change'), 1200);
+                    }
+
+                    el.className = `value ${data[`${key}_pnl`] >= 0 ? 'profit' : 'loss'}`;
+                }
             });
 
-            // Current unrealized P&L
-            const currentEl = document.getElementById('current-pnl');
-            if (currentEl) {
-                const val = data.current_unrealized_pnl.toFixed(2);
-                currentEl.textContent = `₹${val}`;
-                currentEl.className = data.current_unrealized_pnl >= 0 
-                    ? 'profit fw-bold' 
-                    : 'loss fw-bold';
-            }
+            // Restore opacity
+            if (pnlElement) pnlElement.style.opacity = '1';
         })
-        .catch(() => {});
+        .catch(error => {
+            console.error('Dashboard update failed:', error);
+            // Optional: show warning once
+            if (!document.getElementById('refresh-warning')) {
+                const warning = document.createElement('div');
+                warning.id = 'refresh-warning';
+                warning.className = 'alert alert-warning mt-3 small';
+                warning.textContent = 'Live updates temporarily unavailable. Please refresh page.';
+                document.querySelector('.dashboard-content').prepend(warning);
+            }
+        });
 }
 
-setInterval(refreshDashboard, 45000);
+// Run immediately + every 8 seconds (good balance between fresh & not spamming server)
+setInterval(refreshDashboard, 8000);
 refreshDashboard();
 </script>
 {% endblock %}

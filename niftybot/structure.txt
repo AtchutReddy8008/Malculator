@@ -6,8 +6,8 @@ niftybot/
 │   ├── urls.py
 │   ├── asgi.py
 │   ├── wsgi.py
-│   └── celery.py
-├── trading/
+│   └── celery.py               # → async tasks / background jobs (good)
+├── trading/                     # main app — contains trading logic
 │   ├── __init__.py
 │   ├── admin.py
 │   ├── apps.py
@@ -15,22 +15,23 @@ niftybot/
 │   ├── views.py
 │   ├── forms.py
 │   ├── urls.py
-│   ├── tasks.py
+│   ├── tasks.py                # Celery tasks probably live here
 │   └── core/
 │       ├── __init__.py
-│       ├── bot_original.py
-│       └── auth.py
+│       ├── bot_original.py     # core trading/bot logic?
+│       └── auth.py             # authentication helpers (broker login?)
 ├── templates/
 │   ├── base.html
 │   ├── registration/
 │   │   ├── login.html
 │   │   └── signup.html
-│   ├── trading/
-│   │   ├── dashboard.html
-            algoritms.html
-            strategies_list.html
-            coming_soon.html
-            broker.html
-            pnl_calender.html
-│   │   └── connect_zerodha.html
+│   └── trading/
+│       ├── dashboard.html
+│       ├── algoritms.html      # ← almost certainly typo
+│       ├── strategies_list.html
+│       ├── coming_soon.html
+│       ├── broker.html
+│       ├── home.html           # note: this is inside trading/, not top-level
+│       ├── pnl_calender.html   # ← typo: should be calendar
+│       └── connect_zerodha.html
 └── requirements.txt
