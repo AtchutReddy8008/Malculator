@@ -145,9 +145,9 @@ def run_user_bot(self, user_id):
         logger.info(f"[{task_id}] Initial heartbeat saved")
 
         # ------------------------------------------------------------------
-        # Main loop
+        # Main loop - FIXED: one cycle per iteration + sleep
         # ------------------------------------------------------------------
-        HEARTBEAT_INTERVAL = 30  # seconds
+        HEARTBEAT_INTERVAL = 10   # more responsive than 30s
         last_heartbeat = time.time()
 
         while runner.running:
@@ -170,12 +170,12 @@ def run_user_bot(self, user_id):
 
             try:
                 # ----------------------------------------------------------
-                # Run one full bot cycle
+                # Run ONE full bot cycle
                 # ----------------------------------------------------------
                 app.run()
 
                 # ----------------------------------------------------------
-                # Heartbeat update (every 30s)
+                # Heartbeat update
                 # ----------------------------------------------------------
                 if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
                     try:
@@ -207,6 +207,8 @@ def run_user_bot(self, user_id):
                     bot_status.last_error = str(loop_err)[:500]
                     bot_status.save(update_fields=['last_error'])
                 time.sleep(10)  # backoff
+
+            time.sleep(1)  # ← CRITICAL: yield control to Celery
 
         logger.info(f"[{task_id}] Main loop exited cleanly")
 
