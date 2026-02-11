@@ -318,24 +318,25 @@
                             {% with day_date=year|stringformat:"04d"|add:"-"|add:month|stringformat:"02d"|add:"-"|add:day|stringformat:"02d" %}
                                 <div class="calendar-day {% if day_date == today_str %}current-day{% endif %}">
                                     <div class="date">{{ day }}</div>
-                                    
-                                    {% with pnl_found=False %}
-                                        {% for record in daily_records %}
-                                            {% if record.date|date:"Y-m-d" == day_date and not pnl_found %}
-                                                <div class="pnl {% if record.pnl >= 0 %}profit{% else %}loss{% endif %}">
-                                                    ₹{{ record.pnl|floatformat:0 }}
-                                                </div>
-                                                <div class="day-details">
-                                                    <strong>{{ day_date }}</strong><br>
-                                                    P&L: ₹{{ record.pnl|floatformat:2 }}<br>
-                                                    Trades: {{ record.total_trades }}<br>
-                                                    Wins: {{ record.win_trades }}<br>
-                                                    Losses: {{ record.loss_trades }}
-                                                </div>
-                                                {% with pnl_found=True %}{% endwith %}
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% endwith %}
+
+                                    {% for record in daily_records %}
+                                        {% if record.date|date:"Y-m-d" == day_date %}
+                                            <div class="pnl {% if record.pnl >= 0 %}profit{% else %}loss{% endif %}">
+                                                ₹{{ record.pnl|floatformat:0 }}
+                                            </div>
+                                            <div class="day-details">
+                                                <strong>{{ day_date }}</strong><br>
+                                                P&L: ₹{{ record.pnl|floatformat:2 }}<br>
+                                                Trades: {{ record.total_trades|default:0 }}<br>
+                                                Wins: {{ record.win_trades|default:0 }}<br>
+                                                Losses: {{ record.loss_trades|default:0 }}
+                                            </div>
+                                        {% endif %}
+                                    {% empty %}
+                                        <div class="pnl" style="background:rgba(255,255,255,0.08); color:#94a3b8;">
+                                            ₹0
+                                        </div>
+                                    {% endfor %}
                                 </div>
                             {% endwith %}
                         {% endif %}
@@ -354,7 +355,7 @@
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: rgba(51,65,85,0.45); border-color: #475569;"></div>
-                    <span>No Trade</span>
+                    <span>No Trade / ₹0</span>
                 </div>
             </div>
         </div>
@@ -425,14 +426,14 @@
                             {% if record.pnl >= 0 %}profit-bg{% else %}loss-bg{% endif %}">
                             <div>
                                 <strong>{{ record.date|date:"D, M d" }}</strong><br>
-                                <small class="text-muted">{{ record.total_trades }} trades</small>
+                                <small class="text-muted">{{ record.total_trades|default:0 }} trades</small>
                             </div>
                             <div class="text-end">
                                 <span class="{% if record.pnl >= 0 %}profit{% else %}loss{% endif %}">
                                     ₹{{ record.pnl|floatformat:2 }}
                                 </span><br>
                                 <small class="text-muted">
-                                    {{ record.win_trades }}W / {{ record.loss_trades }}L
+                                    {{ record.win_trades|default:0 }}W / {{ record.loss_trades|default:0 }}L
                                 </small>
                             </div>
                         </div>
