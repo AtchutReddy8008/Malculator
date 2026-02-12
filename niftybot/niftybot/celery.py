@@ -5,155 +5,100 @@ from celery import Celery
 from celery.schedules import crontab
 
 # ------------------------------------------------------------------------------
-# SET DJANGO SETTINGS
+# SET DJANGO SETTINGS MODULE
 # ------------------------------------------------------------------------------
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "niftybot.settings")
 
 # ------------------------------------------------------------------------------
-# CREATE CELERY APP
+# CREATE CELERY APPLICATION INSTANCE
 # ------------------------------------------------------------------------------
 app = Celery("niftybot")
 
 # ------------------------------------------------------------------------------
-# LOAD DJANGO CELERY SETTINGS
+# LOAD CONFIGURATION FROM DJANGO SETTINGS (CELERY_ namespace)
 # ------------------------------------------------------------------------------
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # ------------------------------------------------------------------------------
-# AUTO DISCOVER TASKS
+# AUTO-DISCOVER TASKS IN ALL INSTALLED APPS
 # ------------------------------------------------------------------------------
 app.autodiscover_tasks()
 
 # ------------------------------------------------------------------------------
-# 🔥 CRITICAL CONFIG — SAFE FOR LONG-RUNNING TRADING BOTS
+# CRITICAL CONFIGURATION — OPTIMIZED FOR LONG-RUNNING TRADING BOTS
 # ------------------------------------------------------------------------------
 app.conf.update(
-
-    # ❌ DO NOT EVER SET TIME LIMITS FOR TRADING BOTS
+    # ── Never use time limits — trading tasks must run until stopped ──
     task_time_limit=None,
     task_soft_time_limit=None,
 
-    # ✅ Worker behavior (LONG TASK SAFE)
-    worker_prefetch_multiplier=1,   # Prevent task stealing
-    task_acks_late=True,            # Ack only after clean exit
-    worker_concurrency=1,           # ONE BOT PER WORKER (MANDATORY)
+    # ── Worker settings safe for long-running / stateful tasks ──
+    worker_prefetch_multiplier=1,       # No prefetching → prevents task stealing
+    task_acks_late=True,                # Acknowledge only after task completes
+    worker_concurrency=1,               # One bot per worker process (recommended)
 
-    # ✅ Stability
+    # ── Connection stability ──
     broker_connection_retry_on_startup=True,
     broker_connection_max_retries=None,
 
-    # ✅ Result backend cleanup
-    result_expires=3600,
+    # ── Result backend cleanup (not using results heavily) ──
+    result_expires=3600,                # 1 hour
 
-    # ✅ Timezone (Indian market)
+    # ── Timezone & UTC handling (critical for Indian market hours) ──
     timezone="Asia/Kolkata",
     enable_utc=False,
 
-    # ✅ Visibility
+    # ── Better visibility in Flower / logs ──
     task_track_started=True,
 )
 
 # ------------------------------------------------------------------------------
-# CELERY BEAT SCHEDULE
+# CELERY BEAT SCHEDULE — PERIODIC TASKS
 # ------------------------------------------------------------------------------
 app.conf.beat_schedule = {
-
-    # Health check every 5 minutes
+    # Health check — detects stale/zombie bots
     "check-bot-health-every-5-minutes": {
         "task": "trading.tasks.check_bot_health",
         "schedule": crontab(minute="*/5"),
         "options": {
-            "expires": 300,
+            "expires": 300,             # 5 minutes
+        },
+    },
+
+    # Auto-start all eligible user bots at market open
+    "auto-start-user-bots-0900": {
+        "task": "trading.tasks.auto_start_user_bots",
+        "schedule": crontab(hour=9, minute=0),
+    },
+
+    # Save daily PnL snapshot for every user at market close
+    "save-daily-pnl-all-users-1545": {
+        "task": "trading.tasks.save_daily_pnl_all_users",
+        "schedule": crontab(hour=15, minute=45),
+    },
+
+    # Weekly cleanup of non-critical logs (INFO & WARNING only)
+    # Keeps ERROR and CRITICAL logs forever
+    "weekly-log-cleanup-sunday-0230": {
+        "task": "trading.cleanup_old_logs",
+        "schedule": crontab(day_of_week=6, hour=2, minute=30),  # Sunday = 6
+        "options": {
+            "expires": 3600,            # 1 hour
         },
     },
 }
 
 # ------------------------------------------------------------------------------
-# DEBUG TASK (OPTIONAL BUT USEFUL)
+# DEBUG / TEST TASK (VERY USEFUL DURING DEVELOPMENT)
 # ------------------------------------------------------------------------------
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
+    """Simple debug task to test Celery connectivity and logging."""
     print(f"Celery Debug Request: {self.request!r}")
 
+
 # ------------------------------------------------------------------------------
-# ENTRY POINT (OPTIONAL)
+# ENTRY POINT — ALLOWS RUNNING CELERY DIRECTLY (python celery.py worker ...)
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
     app.start()
-
-
-# # niftybot/niftybot/celery.py
-# import os
-# from celery import Celery
-# from celery.schedules import crontab
-# from django.conf import settings
-
-# # Set default Django settings module for Celery
-# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'niftybot.settings')
-
-# # Create Celery app instance
-# app = Celery('niftybot')
-
-# # Load configuration from Django settings with CELERY_ namespace
-# app.config_from_object('django.conf:settings', namespace='CELERY')
-
-# # Automatically discover tasks in all installed apps
-# # This will find trading.tasks automatically
-# app.autodiscover_tasks()
-
-# # Optional: Debug task (very useful during development)
-# @app.task(bind=True, ignore_result=True)
-# def debug_task(self):
-#     print(f'Request: {self.request!r}')
-#     return 'Debug task executed successfully'
-
-
-# # Periodic tasks schedule (Celery Beat)
-# app.conf.beat_schedule = {
-#     # Run bot health check every 5 minutes
-#     'check-bot-health-every-5-minutes': {
-#         'task': 'trading.tasks.check_bot_health',
-#         'schedule': crontab(minute='*/5'),  # every 5 minutes
-#         'args': (),
-#         'options': {
-#             'expires': 300,  # task result expires after 5 min
-#         },
-#     },
-
-#     # Optional: Example of another periodic task (uncomment if needed)
-#     # 'cleanup-old-logs-every-day': {
-#     #     'task': 'trading.tasks.cleanup_old_logs',
-#     #     'schedule': crontab(hour=2, minute=0),  # 2:00 AM daily
-#     # },
-# }
-
-# # Important settings (you can override these in settings.py too)
-# app.conf.update(
-#     # Result backend (recommended: use Redis or database)
-#     result_expires=3600,                # 1 hour
-#     task_track_started=True,
-#     task_time_limit=7200,               # 2 hours hard limit per task
-#     task_soft_time_limit=7000,          # soft limit to allow graceful shutdown
-#     worker_concurrency=4,               # adjust based on your server
-#     worker_prefetch_multiplier=1,       # better for long-running tasks
-#     broker_connection_retry_on_startup=True,
-#     broker_connection_max_retries=None,
-#     timezone='Asia/Kolkata',            # important for Indian market hours
-#     enable_utc=False,
-# )
-
-# # Optional: Load task modules explicitly (if autodiscover misses something)
-# app.conf.task_modules = [
-#     'trading.tasks',
-#     # Add more if you create new apps with tasks
-# ]
-
-# # This line is required for Django to find the app
-# @app.task(bind=True)
-# def debug_task(self):
-#     print(f'Request: {self.request!r}')
-
-
-# # Make sure the app is importable
-# if __name__ == '__main__':
-#     app.start()

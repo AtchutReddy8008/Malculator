@@ -1,3 +1,5 @@
+# trading/views.py
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
@@ -49,36 +51,7 @@ def dashboard(request):
 
         recent_trades = Trade.objects.filter(user=request.user).order_by('-entry_time')[:10]
 
-        today = date.today()
-        daily_pnl = DailyPnL.objects.filter(user=request.user, date=today).first()
-
-        week_ago = today - timedelta(days=7)
-        weekly_agg = DailyPnL.objects.filter(
-            user=request.user,
-            date__gte=week_ago
-        ).aggregate(
-            total_pnl=Sum('pnl'),
-        )
-
-        weekly_trades = Trade.objects.filter(
-            user=request.user,
-            entry_time__date__gte=week_ago,
-            status='EXECUTED'
-        ).count()
-
-        month_start = date(today.year, today.month, 1)
-        monthly_agg = DailyPnL.objects.filter(
-            user=request.user,
-            date__gte=month_start
-        ).aggregate(
-            total_pnl=Sum('pnl'),
-        )
-
-        monthly_trades = Trade.objects.filter(
-            user=request.user,
-            entry_time__date__gte=month_start,
-            status='EXECUTED'
-        ).count()
+        stats = get_user_stats(request.user)
 
         trades_qs = Trade.objects.filter(user=request.user, status='EXECUTED')
         total_executed = trades_qs.count()
@@ -91,15 +64,15 @@ def dashboard(request):
         context = {
             'bot_status': bot_status,
             'recent_trades': recent_trades,
-            'daily_pnl': daily_pnl,
-            'weekly_pnl': weekly_agg['total_pnl'] or 0,
-            'weekly_trades': weekly_trades,
-            'monthly_pnl': monthly_agg['total_pnl'] or 0,
-            'monthly_trades': monthly_trades,
+            'daily_pnl': stats['daily_pnl'],
+            'weekly_pnl': stats['weekly_pnl'],
+            'weekly_trades': stats['weekly_trades'],
+            'monthly_pnl': stats['monthly_pnl'],
+            'monthly_trades': stats['monthly_trades'],
             'win_rate': round(win_rate, 2),
             'broker_ready': broker_ready,
             'broker': broker,
-            'today': today,
+            'today': date.today(),
             'daily_target': float(bot_status.daily_profit_target or 0),
             'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
             'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
@@ -123,27 +96,16 @@ def dashboard(request):
 def dashboard_stats(request):
     """JSON endpoint for live dashboard updates"""
     user = request.user
-    bot_status = BotStatus.objects.filter(user=user).first()  # safer than .get()
+    bot_status = BotStatus.objects.filter(user=user).first()
 
-    today = date.today()
-    daily_pnl = DailyPnL.objects.filter(user=user, date=today).first()
-
-    week_ago = today - timedelta(days=7)
-    weekly_agg = DailyPnL.objects.filter(
-        user=user, date__gte=week_ago
-    ).aggregate(total_pnl=Sum('pnl'))
-
-    month_start = date(today.year, today.month, 1)
-    monthly_agg = DailyPnL.objects.filter(
-        user=user, date__gte=month_start
-    ).aggregate(total_pnl=Sum('pnl'))
+    stats = get_user_stats(user)
 
     data = {
         'bot_running': bot_status.is_running if bot_status else False,
         'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0) if bot_status else 0.0,
-        'daily_pnl': float(daily_pnl.pnl if daily_pnl else 0),
-        'weekly_pnl': float(weekly_agg['total_pnl'] or 0),
-        'monthly_pnl': float(monthly_agg['total_pnl'] or 0),
+        'daily_pnl': float(stats['daily_pnl'].pnl if stats['daily_pnl'] else 0),
+        'weekly_pnl': float(stats['weekly_pnl']),
+        'monthly_pnl': float(stats['monthly_pnl']),
         'last_error': bot_status.last_error if bot_status and bot_status.last_error else None,
         'timestamp': timezone.now().isoformat(),
     }
@@ -164,13 +126,16 @@ def broker_page(request):
             broker_obj.broker_name = 'ZERODHA'
             broker_obj.save()
 
-            # Run token generation in background
-            generate_zerodha_token_task.delay(broker_obj.id)
+            # Only trigger token generation if we don't already have a valid token
+            if not broker or not broker.access_token:
+                generate_zerodha_token_task.delay(broker_obj.id)
+                messages.success(
+                    request,
+                    'Zerodha credentials saved. Token generation started in background...'
+                )
+            else:
+                messages.info(request, 'Zerodha credentials updated successfully.')
 
-            messages.success(
-                request,
-                'Zerodha credentials saved. Token generation started in background...'
-            )
             return redirect('broker')
         else:
             messages.error(request, 'Please correct the errors below.')
@@ -241,6 +206,7 @@ def pnl_calendar(request):
         'next_month': month + 1 if month < 12 else 1,
         'next_year': year if month < 12 else year + 1,
         'today_str': date.today().strftime('%Y-%m-%d'),
+        'current_month_str': date(year, month, 1).strftime('%B %Y'),
     }
     return render(request, 'trading/pnl_calendar.html', context)
 
@@ -288,7 +254,8 @@ def algorithms_page(request):
             'avg_daily_pnl': calculate_average_pnl(request.user),
             'best_day': get_best_day(request.user),
             'worst_day': get_worst_day(request.user),
-            'current_streak': get_current_streak(request.user),
+            'current_streak': get_current_streak(request.user, 'win'),
+            'current_loss_streak': get_current_streak(request.user, 'loss'),
         }
 
         broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
@@ -323,7 +290,24 @@ def algorithms_page(request):
         return render(request, 'trading/algorithms.html', {'error': str(e)})
 
 
-# Helper functions
+# ───────────────────────────────────────────────
+# Helper Functions
+# ───────────────────────────────────────────────
+
+def get_user_stats(user):
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_start = date(today.year, today.month, 1)
+
+    return {
+        'daily_pnl': DailyPnL.objects.filter(user=user, date=today).first(),
+        'weekly_pnl': DailyPnL.objects.filter(user=user, date__gte=week_ago).aggregate(total=Sum('pnl'))['total'] or 0,
+        'monthly_pnl': DailyPnL.objects.filter(user=user, date__gte=month_start).aggregate(total=Sum('pnl'))['total'] or 0,
+        'weekly_trades': Trade.objects.filter(user=user, entry_time__date__gte=week_ago, status='EXECUTED').count(),
+        'monthly_trades': Trade.objects.filter(user=user, entry_time__date__gte=month_start, status='EXECUTED').count(),
+    }
+
+
 def calculate_win_rate(user):
     qs = Trade.objects.filter(user=user, status='EXECUTED')
     total = qs.count()
@@ -350,14 +334,20 @@ def get_worst_day(user):
     return DailyPnL.objects.filter(user=user).order_by('pnl').first()
 
 
-def get_current_streak(user):
+def get_current_streak(user, streak_type='win'):
+    """
+    Calculate current win or loss streak based on daily PnL.
+    streak_type: 'win' or 'loss'
+    """
     streak = 0
     current = date.today()
+    sign = 1 if streak_type == 'win' else -1
+
     while True:
         record = DailyPnL.objects.filter(user=user, date=current).first()
         if not record or record.pnl == 0:
             break
-        if record.pnl > 0:
+        if (record.pnl * sign) > 0:
             streak += 1
             current -= timedelta(days=1)
         else:
@@ -407,8 +397,7 @@ def start_bot(request):
 
         messages.success(
             request,
-            f'Bot started successfully! Task ID: {result.id[:8]}... '
-            '(refresh in 10–30 seconds for live status)'
+            f'Bot started successfully! Task ID: {result.id[:8]}... (refresh in 10–30s)'
         )
     except Exception as e:
         error_msg = f'Failed to start bot: {str(e)}'
@@ -538,7 +527,6 @@ def signup(request):
         form = SignUpForm(request.POST)
         if form.is_valid():
             user = form.save()
-            # Auto-create BotStatus on signup
             BotStatus.objects.get_or_create(user=user)
             login(request, user)
             messages.success(request, 'Account created successfully! Welcome.')
@@ -555,18 +543,6 @@ def user_logout(request):
     logout(request)
     messages.info(request, 'You have been logged out.')
     return redirect('home')
-
-
-@login_required
-def connect_zerodha(request):
-    broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
-
-    if broker and broker.access_token:
-        messages.info(request, "Zerodha is already connected!")
-        return redirect('broker')
-
-    messages.info(request, "Please fill in your Zerodha credentials on the Broker page.")
-    return redirect('broker')
 
 
 # ───────────────────────────────────────────────
@@ -629,3 +605,11 @@ def coming_soon_placeholder(request):
         'expected': "Expected release: Q3 2026"
     }
     return render(request, 'trading/coming_soon.html', context)
+
+# Add this at the very bottom of trading/views.py (after all other views)
+
+@login_required
+def connect_zerodha(request):
+    """Temporary redirect from old /connect-zerodha/ URL to the current broker page"""
+    messages.info(request, "Zerodha connection is now managed on the Broker page.")
+    return redirect('broker')

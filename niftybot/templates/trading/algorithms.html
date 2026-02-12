@@ -282,11 +282,33 @@
         .restricted-access-card {
             padding: 2rem 1.5rem;
         }
+        .stat-card-sm .value {
+            font-size: 1.25rem;
+        }
     }
 
     .loading {
         opacity: 0.6;
         pointer-events: none;
+        position: relative;
+    }
+
+    .loading::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 24px;
+        height: 24px;
+        border: 3px solid var(--primary);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        transform: translate(-50%, -50%);
+    }
+
+    @keyframes spin {
+        to { transform: translate(-50%, -50%) rotate(360deg); }
     }
 </style>
 {% endblock %}
@@ -331,6 +353,9 @@
                                         </small>
                                     </div>
                                 </div>
+                                <small id="heartbeat-age" class="text-muted d-block">
+                                    Last heartbeat: calculating...
+                                </small>
                             </div>
 
                             <!-- Today's Target & Stop-Loss (Live Updating) -->
@@ -340,8 +365,8 @@
                                     <div class="col-6">
                                         <div class="stat-card-sm loading" id="target-card">
                                             <div class="value text-success" id="daily-target">
-                                                {% if daily_target and daily_target != 0 %}
-                                                    ₹{{ daily_target|floatformat:0 }}
+                                                {% if bot_status.daily_profit_target and bot_status.daily_profit_target != 0 %}
+                                                    ₹{{ bot_status.daily_profit_target|floatformat:0 }}
                                                 {% else %}
                                                     ---
                                                 {% endif %}
@@ -352,8 +377,8 @@
                                     <div class="col-6">
                                         <div class="stat-card-sm loading" id="stop-card">
                                             <div class="value text-danger" id="daily-stop">
-                                                {% if daily_stop_loss and daily_stop_loss != 0 %}
-                                                    ₹{{ daily_stop_loss|floatformat:0 }}
+                                                {% if bot_status.daily_stop_loss and bot_status.daily_stop_loss != 0 %}
+                                                    ₹{{ bot_status.daily_stop_loss|floatformat:0 }}
                                                 {% else %}
                                                     ---
                                                 {% endif %}
@@ -434,21 +459,11 @@
 
                                 {% if user.is_staff %}
                                     <div class="d-grid gap-3">
-                                        {% if bot_status.is_running %}
-                                            <form action="{% url 'stop_bot' %}" method="post">
-                                                {% csrf_token %}
-                                                <button type="submit" class="btn btn-danger btn-lg w-100">
-                                                    <i class="fas fa-power-off me-2"></i> Stop Algorithm
-                                                </button>
-                                            </form>
-                                        {% else %}
-                                            <form action="{% url 'start_bot' %}" method="post">
-                                                {% csrf_token %}
-                                                <button type="submit" class="btn btn-success btn-lg w-100">
-                                                    <i class="fas fa-play me-2"></i> Start Algorithm
-                                                </button>
-                                            </form>
-                                        {% endif %}
+                                        <button id="toggle-bot-btn" 
+                                                class="btn {% if bot_status.is_running %}btn-danger{% else %}btn-success{% endif %} btn-lg w-100">
+                                            <i class="fas {% if bot_status.is_running %}fa-power-off{% else %}fa-play{% endif %} me-2"></i>
+                                            {% if bot_status.is_running %}Stop Algorithm{% else %}Start Algorithm{% endif %}
+                                        </button>
                                     </div>
                                     <div class="mt-3 text-center">
                                         <small class="text-muted">
@@ -465,7 +480,7 @@
                                             To request access or start trading, please contact the admin:
                                         </p>
                                         <div class="contact-number">
-                                            8008603917
+                                            7674983016
                                         </div>
                                     </div>
                                 {% endif %}
@@ -473,61 +488,61 @@
 
                             <!-- Short Strangle Live Visualization -->
                             <div class="mt-4 pt-2">
-                                <h6 class="text-muted mb-3 text-center">Current Strangle Position (Live Sketch)</h6>
+                                <h6 class="text-muted mb-3 text-center">Current Strangle Position (Live)</h6>
                                 
-                                <div class="position-relative" style="height: 140px; max-width: 340px; margin: 0 auto;">
-                                    <div style="position: absolute; top: 70px; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.18);"></div>
+                                <div class="position-relative" style="height: 160px; max-width: 380px; margin: 0 auto;">
+                                    <div style="position: absolute; top: 80px; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.18);"></div>
                                     
                                     <div id="current-price-label" 
-                                         style="position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
-                                                background: rgba(30,40,55,0.9); color: #a5b4fc; padding: 0.35rem 0.9rem;
-                                                border-radius: 8px; font-size: 0.95rem; font-weight: 600; white-space: nowrap;
-                                                border: 1px solid rgba(165,180,252,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+                                         style="position: absolute; top: 55px; left: 50%; transform: translateX(-50%);
+                                                background: rgba(30,40,55,0.9); color: #a5b4fc; padding: 0.4rem 1rem;
+                                                border-radius: 10px; font-size: 1rem; font-weight: 600; white-space: nowrap;
+                                                border: 1px solid rgba(165,180,252,0.3); box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
                                         NIFTY ≈ <span id="live-nifty">---</span>
                                     </div>
 
                                     <div class="strangle-leg call-leg"
-                                         style="position: absolute; top: 10px; width: 120px; height: 50px; right: 20px; 
-                                                border: 2px dashed #ff6b6b; border-radius: 10px 10px 0 0; border-bottom: none;
+                                         style="position: absolute; top: 10px; width: 140px; height: 60px; right: 20px; 
+                                                border: 2px dashed #ff6b6b; border-radius: 12px 12px 0 0; border-bottom: none;
                                                 background: linear-gradient(to bottom, rgba(255,107,107,0.08), transparent);
-                                                box-shadow: 0 4px 14px rgba(255,107,107,0.15);">
-                                        <div style="position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
-                                                    color: #ff6b6b; font-size: 0.82rem; font-weight: 600; white-space: nowrap;">
+                                                box-shadow: 0 4px 16px rgba(255,107,107,0.15);">
+                                        <div style="position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
+                                                    color: #ff6b6b; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">
                                             Short Call • Sell
                                         </div>
                                         <div id="call-strike" class="strike-label" 
-                                             style="position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-                                                    color: #fda4af; font-weight: 700; font-size: 1.1rem;">
+                                             style="position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+                                                    color: #fda4af; font-weight: 700; font-size: 1.25rem;">
                                             ---
                                         </div>
                                     </div>
 
                                     <div class="strangle-leg put-leg"
-                                         style="position: absolute; bottom: 10px; width: 120px; height: 50px; left: 20px; 
-                                                border: 2px dashed #34d399; border-radius: 0 0 10px 10px; border-top: none;
+                                         style="position: absolute; bottom: 10px; width: 140px; height: 60px; left: 20px; 
+                                                border: 2px dashed #34d399; border-radius: 0 0 12px 12px; border-top: none;
                                                 background: linear-gradient(to top, rgba(52,211,153,0.08), transparent);
-                                                box-shadow: 0 4px 14px rgba(52,211,153,0.15);">
-                                        <div style="position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%);
-                                                    color: #34d399; font-size: 0.82rem; font-weight: 600; white-space: nowrap;">
+                                                box-shadow: 0 4px 16px rgba(52,211,153,0.15);">
+                                        <div style="position: absolute; bottom: -26px; left: 50%; transform: translateX(-50%);
+                                                    color: #34d399; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">
                                             Short Put • Sell
                                         </div>
                                         <div id="put-strike" class="strike-label"
-                                             style="position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
-                                                    color: #6ee7b7; font-weight: 700; font-size: 1.1rem;">
+                                             style="position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+                                                    color: #6ee7b7; font-weight: 700; font-size: 1.25rem;">
                                             ---
                                         </div>
                                     </div>
 
                                     <div id="price-marker" 
-                                         style="position: absolute; top: 62px; width: 18px; height: 18px; margin-left: -9px;
+                                         style="position: absolute; top: 72px; width: 20px; height: 20px; margin-left: -10px;
                                                 background: #a5b4fc; border-radius: 50%; border: 3px solid #6366f1;
-                                                box-shadow: 0 0 16px rgba(99,102,241,0.7), 0 0 0 6px rgba(99,102,241,0.2);
+                                                box-shadow: 0 0 18px rgba(99,102,241,0.7), 0 0 0 8px rgba(99,102,241,0.2);
                                                 transition: left 1.8s ease-out;">
                                     </div>
                                 </div>
 
                                 <div class="text-center mt-3">
-                                    <small class="text-muted" style="font-size: 0.82rem;">
+                                    <small class="text-muted" style="font-size: 0.9rem;">
                                         Current position: <strong id="strangle-status">No active position</strong>
                                     </small>
                                 </div>
@@ -607,6 +622,15 @@
 
                     <hr class="my-4 bg-secondary bg-opacity-25">
 
+                    <div class="alert alert-info border-0 bg-info bg-opacity-10">
+                        <h6 class="mb-2"><i class="fas fa-lightbulb me-2"></i> Trading Tips</h6>
+                        <ul class="mb-0 small">
+                            <li>Algorithm active Mon, Wed, Thu, Fri</li>
+                            <li>No trading on Tuesdays & expiry days</li>
+                            <li>Auto exit at 3:00 PM IST</li>
+                            <li>Stop loss = daily target amount</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -792,11 +816,20 @@
             Settings updated successfully!
         </div>
     </div>
+    <div id="error-toast" class="toast bg-danger text-white" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-danger text-white">
+            <strong class="me-auto">Error</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="error-message">
+            Failed to update settings.
+        </div>
+    </div>
 </div>
 {% endif %}
 
 <script>
-// Live time & market status (visible to all)
+// Live market time & status (visible to all)
 function updateMarketStatus() {
     const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     const timeParts = now.split(', ');
@@ -827,7 +860,7 @@ setInterval(updateMarketStatus, 1000);
 
 {% if user.is_staff %}
     // ────────────────────────────────────────────────
-    // LIVE REFRESH FOR TARGET, STOP-LOSS, PnL, STATUS
+    // LIVE REFRESH + TOGGLE BUTTON (AJAX)
     // ────────────────────────────────────────────────
     function refreshBotData() {
         const loadingElements = [
@@ -847,6 +880,7 @@ setInterval(updateMarketStatus, 1000);
                 const statusEl = document.getElementById('status-indicator');
                 const activeEl = document.getElementById('status-active');
                 const timeEl = document.getElementById('status-time');
+                const toggleBtn = document.getElementById('toggle-bot-btn');
 
                 if (data.is_running) {
                     statusEl.className = 'status-indicator status-running';
@@ -854,12 +888,16 @@ setInterval(updateMarketStatus, 1000);
                     activeEl.className = 'status-indicator status-running px-3 py-2';
                     activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Active';
                     timeEl.textContent = 'Started ' + (data.last_started ? new Date(data.last_started).toLocaleString() : 'recently');
+                    toggleBtn.className = 'btn btn-danger btn-lg w-100';
+                    toggleBtn.innerHTML = '<i class="fas fa-power-off me-2"></i> Stop Algorithm';
                 } else {
                     statusEl.className = 'status-indicator status-stopped';
                     statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> STOPPED';
                     activeEl.className = 'status-indicator status-stopped px-3 py-2';
                     activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Inactive';
                     timeEl.textContent = 'Stopped ' + (data.last_stopped ? new Date(data.last_stopped).toLocaleString() : 'recently');
+                    toggleBtn.className = 'btn btn-success btn-lg w-100';
+                    toggleBtn.innerHTML = '<i class="fas fa-play me-2"></i> Start Algorithm';
                 }
 
                 // Target & Stop-Loss
@@ -878,6 +916,18 @@ setInterval(updateMarketStatus, 1000);
                 pnlEl.textContent = '₹' + pnlValue.toLocaleString('en-IN');
                 pnlEl.className = `value ${data.current_unrealized_pnl >= 0 ? 'text-success' : 'text-danger'}`;
 
+                // Heartbeat age
+                const ageEl = document.getElementById('heartbeat-age');
+                if (ageEl && data.last_heartbeat_ago) {
+                    let ageClass = 'text-danger';
+                    if (data.last_heartbeat_ago.includes('0 min') || data.last_heartbeat_ago.includes('1 min')) {
+                        ageClass = 'text-success';
+                    } else if (data.last_heartbeat_ago.includes('2') || data.last_heartbeat_ago.includes('3') || data.last_heartbeat_ago.includes('4')) {
+                        ageClass = 'text-warning';
+                    }
+                    ageEl.innerHTML = `Last heartbeat: <span class="${ageClass}">${data.last_heartbeat_ago}</span>`;
+                }
+
                 // Last error
                 const errorEl = document.getElementById('last-error');
                 if (errorEl && data.last_error && data.last_error !== 'None') {
@@ -891,19 +941,49 @@ setInterval(updateMarketStatus, 1000);
             })
             .catch(err => {
                 console.error('Failed to refresh bot data:', err);
-                // Silent fail - no user-facing message
             });
     }
 
-    // Run immediately + every 12 seconds
-    refreshBotData();
-    setInterval(refreshBotData, 12000);
+    // Toggle bot start/stop via AJAX
+    document.getElementById('toggle-bot-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        const isRunning = this.textContent.includes('Stop');
+        const url = isRunning ? '{% url "stop_bot" %}' : '{% url "start_bot" %}';
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Show success toast
+                const toast = new bootstrap.Toast(document.getElementById('save-toast'));
+                toast.show();
+                // Refresh data after toggle
+                setTimeout(refreshBotData, 1500);
+            } else {
+                const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
+                document.getElementById('error-message').textContent = 'Failed to toggle algorithm.';
+                errorToast.show();
+            }
+        })
+        .catch(err => {
+            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
+            document.getElementById('error-message').textContent = 'Error: ' + err.message;
+            errorToast.show();
+        });
+    });
 
     // Save Max Lots Hard Cap
     document.getElementById('save-max-lots')?.addEventListener('click', function() {
         const value = parseInt(document.getElementById('max-lots-input').value);
         if (isNaN(value) || value < 1 || value > 10) {
-            alert('Please enter a number between 1 and 10');
+            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
+            document.getElementById('error-message').textContent = 'Please enter a number between 1 and 10';
+            errorToast.show();
             return;
         }
 
@@ -915,25 +995,30 @@ setInterval(updateMarketStatus, 1000);
             },
             body: JSON.stringify({ max_lots_hard_cap: value })
         })
-        .then(response => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
             if (data.success) {
                 const toast = new bootstrap.Toast(document.getElementById('save-toast'));
                 toast.show();
                 document.getElementById('max-lots-input').value = data.new_value || value;
             } else {
-                alert('Failed: ' + (data.error || 'Unknown error'));
+                const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
+                document.getElementById('error-message').textContent = data.error || 'Failed to save';
+                errorToast.show();
             }
         })
         .catch(err => {
-            alert('Save failed: ' + err.message);
+            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
+            document.getElementById('error-message').textContent = 'Error: ' + err.message;
+            errorToast.show();
         });
     });
 
-    // Strangle animation (fake/demo)
+    // Initial load + periodic refresh (every 12 seconds)
+    refreshBotData();
+    setInterval(refreshBotData, 12000);
+
+    // Strangle animation (now tries to use real data if available)
     function animateStrangle() {
         const marker = document.getElementById('price-marker');
         if (!marker) return;
@@ -952,7 +1037,7 @@ setInterval(updateMarketStatus, 1000);
         const statuses = ["Active", "Delta neutral", "Approaching breakeven", "No position"];
         document.getElementById('strangle-status').textContent = statuses[Math.floor(Math.random() * statuses.length)];
     }
-    setInterval(animateStrangle, 5000);
+    setInterval(animateStrangle, 8000);
     animateStrangle();
 {% endif %}
 </script>

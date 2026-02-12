@@ -194,9 +194,10 @@
         box-shadow: 0 8px 30px rgba(0,0,0,0.55);
         z-index: 100;
         display: none;
-        min-width: 190px;
+        min-width: 210px;
         color: var(--text);
         font-size: 0.94rem;
+        white-space: nowrap;
     }
 
     .calendar-day:hover .day-details {
@@ -274,6 +275,7 @@
         .calendar-days { gap: 0.5rem; }
         .calendar-day .date { font-size: 1.25rem; }
         .calendar-day .pnl { font-size: 1rem; padding: 0.3rem 0.55rem; }
+        .day-details { min-width: 180px; font-size: 0.9rem; padding: 0.8rem; }
     }
 </style>
 {% endblock %}
@@ -318,7 +320,7 @@
                         {% if day == 0 %}
                             <div class="calendar-day empty"></div>
                         {% else %}
-                            {% with year|stringformat:"04d"|add:"-"|add:month|stringformat:"02d"|add:"-"|add:day|stringformat:"02d" as day_date %}
+                            {% with day_date=year|stringformat:"04d"|add:"-"|add:month|stringformat:"02d"|add:"-"|add:day|stringformat:"02d" %}
                                 <div class="calendar-day {% if day_date == today_str %}current-day{% endif %}">
                                     <div class="date">{{ day }}</div>
 
@@ -413,7 +415,7 @@
                     {% with total_days=stats.positive_days|add:stats.negative_days %}
                         {% if total_days > 0 %}
                             {{ stats.positive_days }} / {{ total_days }} 
-                            ({{ stats.positive_days|div:total_days|multiply:100|floatformat:1 }}%)
+                            ({{ stats.positive_days|div:total_days|multiply:100|round_decimal:1 }}%)
                         {% else %}
                             —
                         {% endif %}

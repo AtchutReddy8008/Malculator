@@ -173,41 +173,48 @@
             transform: translateY(-1px);
         }
 
-        .footer {
-            background: rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(10px);
-            padding: 5rem 0 3rem;
-            position: relative;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        /* ───────────────────────────────────────────────
+           TICKER - FIXED BOTTOM, SMOOTH INFINITE SCROLL
+        ─────────────────────────────────────────────── */
+        .ticker-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            background: rgba(8, 8, 12, 0.94);
+            backdrop-filter: blur(14px);
+            border-top: 1px solid rgba(0, 255, 157, 0.28);
+            z-index: 9999;
+            overflow: hidden;
+            pointer-events: none;
         }
 
-        .footer h6 {
-            color: var(--primary);
-            font-weight: 700;
-            margin-bottom: 1.25rem;
-            font-size: 1.1rem;
+        .ticker-wrapper {
+            display: flex;
+            white-space: nowrap;
+            animation: scroll 45s linear infinite;
+            will-change: transform;
+            min-width: 200%;
         }
 
-        .footer a {
-            color: #ccc;
-            text-decoration: none;
-            transition: all 0.2s ease;
-            display: block;
-            margin-bottom: 0.65rem;
+        .ticker-item {
+            padding: 0 60px;
+            font-family: var(--font-num);
             font-size: 0.95rem;
+            color: #f0f0f5;
+            font-weight: 500;
+            flex-shrink: 0;
         }
 
-        .footer a:hover {
-            color: var(--primary);
-            transform: translateX(4px);
+        @keyframes scroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
         }
 
-        .footer-desc {
-            color: #aaa;
-            font-size: 0.95rem;
-            line-height: 1.6;
-        }
-
+        /* ───────────────────────────────────────────────
+           SIGNATURE BLOCK - NAME BASELINE ALIGNED WITH LINKEDIN LOGO BOTTOM
+        ─────────────────────────────────────────────── */
         .signature-block {
             text-align: right;
             white-space: nowrap;
@@ -215,99 +222,66 @@
 
         .crafted-by {
             color: #888;
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
+            font-size: 1rem;
+            margin-bottom: 0.8rem;
         }
 
         .name-highlight {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 12px;
             font-family: var(--font-ui);
-            font-weight: 1000;
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, #fff 20%, var(--primary) 50%, var(--accent) 80%);
+            font-weight: 900;
+            font-size: 1.2rem;
+            letter-spacing: -1px;
+            background: linear-gradient(
+                90deg,
+                #00ff9d, #40c0ff, #ff4d4d, #ffd700, #9f7aea, #00ff9d
+            );
+            background-size: 400% 400%;
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
             text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.3s ease;
+            animation: colorFlow 10s ease infinite;
+            transition: all 0.4s ease;
         }
 
         .name-highlight:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
+            transform: scale(1.06);
+            filter: brightness(1.4) drop-shadow(0 0 20px rgba(255,255,255,0.6));
         }
 
         .linkedin-icon {
-            font-size: 1.1rem;
-            color: #0287ce;
-            margin-left: 4px;
+            font-size: 2.4rem;
+            vertical-align: text-bottom;
+            margin-top: -6px;  /* Fine-tuned to align baseline with logo bottom */
+            background: linear-gradient(
+                90deg,
+                #00ff9d, #40c0ff, #ff4d4d, #ffd700, #9f7aea, #00ff9d
+            );
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: colorFlow 10s ease infinite;
         }
 
-        @keyframes shine { to { background-position: 200% center; } }
-
-        .ticker-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 40px;
-            background: rgba(8, 8, 12, 0.85);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(0, 255, 157, 0.18);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            overflow: hidden;
+        @keyframes colorFlow {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
-        .ticker-wrapper {
-            display: flex;
-            animation: scroll 30s linear infinite;
-        }
-
-        .ticker-item {
-            padding: 0 36px;
-            font-family: var(--font-num);
-            font-size: 0.92rem;
-            white-space: nowrap;
-            color: #f0f0f5;
-            font-weight: 500;
-            letter-spacing: 0.4px;
-            transition: text-shadow 0.3s ease;
-        }
-
-        .ticker-item:hover {
-            text-shadow: 0 0 8px rgba(0, 255, 157, 0.4);
-        }
-
-        .ticker-symbol {
-            color: #ffffff;
-            font-weight: 700;
-            margin-right: 8px;
-        }
-
-        .ticker-price {
-            color: #e0ffe8;
-            font-weight: 600;
-            min-width: 90px;
-            display: inline-block;
-            text-align: right;
-        }
-
-        .ticker-item .text-green,
-        .ticker-item .text-red {
-            font-weight: 700;
-        }
-
-        @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-
-        /* Responsive adjustments for footer */
         @media (max-width: 991px) {
             .signature-block {
                 text-align: center;
-                margin-top: 2.5rem;
+                margin-top: 3rem;
+            }
+            .name-highlight {
+                font-size: 2.6rem;
+            }
+            .linkedin-icon {
+                font-size: 2.0rem;
             }
         }
 
@@ -377,7 +351,7 @@
     <footer class="footer">
         <div class="container">
             <div class="row">
-                <!-- Left side - new content -->
+                <!-- Left side - content -->
                 <div class="col-lg-8 mb-5 mb-lg-0">
                     <div class="row">
                         <!-- Brand & Description -->
@@ -401,29 +375,31 @@
                         <!-- Legal -->
                         <div class="col-md-3 mb-4 mb-md-0">
                             <h6>Legal</h6>
-                            <a href="#">Terms & Conditions</a>
-                            <a href="#">Privacy Policy</a>
-                            <a href="#">Risk Disclosure</a>
-                            <a href="#">Refund Policy</a>
+                            Terms & Conditions
+                            Privacy Policy
+                            Risk Disclosure
+                            Refund Policy
                         </div>
 
                         <!-- Contact Us -->
                         <div class="col-md-3">
                             <h6>Contact Us</h6>
-                            <a href="tel:+918008603917">+91 80086 03917</a>
-                            <a href="mailto:contact@tradewithnaman.com">tradewithnaman@gmail.com</a>
+                            +91 7674983016
+                            tradewithnaman09@gmail.com
                             <span>India</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Right side - signature block (cleaned up) -->
+                <!-- Right side - signature with baseline-aligned LinkedIn logo -->
                 <div class="col-lg-4 text-center text-lg-end">
                     <div class="signature-block">
                         <div class="crafted-by mb-2">
                             Designed & Built by <i class="fas fa-heart text-red"></i>
                         </div>
-                        <a href="https://www.linkedin.com/in/atchut-reddy-8008ar/" target="_blank" class="name-highlight">
+                        <a href="https://www.linkedin.com/in/atchut-reddy-8008ar/" 
+                           target="_blank" 
+                           class="name-highlight">
                             ATCHUT REDDY
                             <i class="fab fa-linkedin-in linkedin-icon"></i>
                         </a>
@@ -433,20 +409,52 @@
         </div>
     </footer>
 
+    <!-- Ticker - duplicated for seamless scroll -->
     <div class="ticker-container">
         <div class="ticker-wrapper">
-            {% for _ in "12345"|make_list %}
+            <!-- First set -->
             <div class="ticker-item">
-                <span class="ticker-symbol">NIFTY</span>
-                <span class="ticker-price">25,175.40</span>
-                <span class="text-green ms-1">▲ 0.51%</span>
-            </div>
-            <div class="ticker-item">
-                <span class="ticker-symbol">BANKNIFTY</span>
-                <span class="ticker-price">59,452.30</span>
-                <span class="text-green ms-1">▲ 0.34%</span>
-            </div>
-            {% endfor %}
+    <span class="ticker-symbol">NIFTY</span>
+    <span class="ticker-price">25,175.40</span>
+    <span class="text-green ms-1">▲ 0.51%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">BANKNIFTY</span>
+    <span class="ticker-price">59,452.30</span>
+    <span class="text-green ms-1">▲ 0.34%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">SENSEX</span>
+    <span class="ticker-price">82,510.20</span>
+    <span class="text-red ms-1">▼ 0.22%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">FINNIFTY</span>
+    <span class="ticker-price">23,845.10</span>
+    <span class="text-green ms-1">▲ 0.18%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">MIDCPNIFTY</span>
+    <span class="ticker-price">12,420.65</span>
+    <span class="text-red ms-1">▼ 0.09%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">BTCUSD</span>
+    <span class="ticker-price">64,320.50</span>
+    <span class="text-green ms-1">▲ 1.25%</span>
+</div>
+
+<div class="ticker-item">
+    <span class="ticker-symbol">ETHUSD</span>
+    <span class="ticker-price">3,120.80</span>
+    <span class="text-red ms-1">▼ 0.47%</span>
+</div>
+
         </div>
     </div>
 
