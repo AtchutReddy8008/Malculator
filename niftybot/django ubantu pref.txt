@@ -87,7 +87,7 @@ sudo apt install screen -y
 
 screen -S Django
 
-cd /root/web/niftybot
+cd /root/calculator/niftybot
 source /root/calculator/venv/bin/activate
 
 python manage.py runserver 0.0.0.0:8000 --noreload
@@ -109,7 +109,8 @@ screen -r django
 screen -r celery
 
 
-pip install gevent
+pip install celery redis gevent
+
 
 
 
