@@ -111,7 +111,7 @@ def round_decimal(value, places=2):
     """
     try:
         val = Decimal(str(value)) if value is not None else Decimal('0')
-        return val.quantize(Decimal('1.' + '0' * places))
+        return val.quantize(Decimal('1.' + '0' * int(places)))
     except (InvalidOperation, TypeError, ValueError):
         return Decimal('0')
 
@@ -128,8 +128,58 @@ def format_money(value, places=2, currency='₹'):
     """
     try:
         val = Decimal(str(value)) if value is not None else Decimal('0')
-        rounded = val.quantize(Decimal('1.' + '0' * places))
+        rounded = val.quantize(Decimal('1.' + '0' * int(places)))
         formatted = f"{rounded:,}"
         return f"{currency}{formatted}"
     except (InvalidOperation, TypeError, ValueError):
         return f"{currency}0"
+
+
+@register.filter(name='greater_than')
+def greater_than(value, arg):
+    """
+    Returns True if value > arg, else False.
+    Safe against None/invalid types.
+    
+    Usage:
+        {% if pnl|greater_than:0 %}Profit{% else %}Loss or Zero{% endif %}
+    """
+    try:
+        val = Decimal(str(value)) if value is not None else Decimal('0')
+        compare = Decimal(str(arg)) if arg is not None else Decimal('0')
+        return val > compare
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+@register.filter(name='less_than')
+def less_than(value, arg):
+    """
+    Returns True if value < arg, else False.
+    Safe against None/invalid types.
+    
+    Usage:
+        {% if pnl|less_than:0 %}Loss{% endif %}
+    """
+    try:
+        val = Decimal(str(value)) if value is not None else Decimal('0')
+        compare = Decimal(str(arg)) if arg is not None else Decimal('0')
+        return val < compare
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+@register.filter(name='get_item')
+def get_item(dictionary, key):
+    """
+    Safely gets a value from a dictionary using a key.
+    Returns None if key not found or dictionary is invalid.
+    
+    Usage:
+        {{ pnl_by_date|get_item:day_date }}
+        {% with value=pnl_by_date|get_item:key %} ... {% endwith %}
+    """
+    try:
+        return dictionary.get(key)
+    except (AttributeError, TypeError):
+        return None

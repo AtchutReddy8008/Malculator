@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% load math_filters %}
+{% load math_filters calendar_tags %}
 
 {% block title %}PnL Calendar - NIFTY Trading Bot{% endblock %}
 
@@ -324,34 +324,32 @@
                                 <div class="calendar-day {% if day_date == today_str %}current-day{% endif %}">
                                     <div class="date">{{ day }}</div>
 
-                                    {% with found=False %}
-                                        {% for record in daily_records %}
-                                            {% if record.date|date:"Y-m-d" == day_date %}
-                                                <div class="pnl 
-                                                    {% if record.pnl > 0 %}profit
-                                                    {% elif record.pnl < 0 %}loss
-                                                    {% else %}zero{% endif %}">
-                                                    ₹{{ record.pnl|floatformat:0|default:"0" }}
-                                                </div>
-                                                <div class="day-details">
-                                                    <strong>{{ day_date }}</strong><br>
-                                                    P&L: ₹{{ record.pnl|floatformat:2|default:"0.00" }}<br>
-                                                    Trades: {{ record.total_trades|default:0 }}<br>
-                                                    Wins: {{ record.win_trades|default:0 }}<br>
-                                                    Losses: {{ record.loss_trades|default:0 }}
-                                                </div>
-                                                {% with found=True %}{% endwith %}
-                                            {% endif %}
-                                        {% endfor %}
-
-                                        {% if not found %}
-                                            <div class="pnl zero">₹0</div>
+                                    {% if day_date in pnl_by_date %}
+                                        {% with pnl_value=pnl_by_date|get_item:day_date %}
+                                            <div class="pnl 
+                                                {% if pnl_value|greater_than:0 %}profit
+                                                {% elif pnl_value|less_than:0 %}loss
+                                                {% else %}zero{% endif %}">
+                                                ₹{{ pnl_value|round_decimal:0|default:"0" }}
+                                            </div>
                                             <div class="day-details">
                                                 <strong>{{ day_date }}</strong><br>
-                                                No trade / ₹0.00
+                                                P&L: ₹{{ pnl_value|round_decimal:2|default:"0.00" }}<br>
+                                                {% if day_date == today_str and today_live_pnl != 0 and bot_running %}
+                                                    <small class="text-info">(Live unrealized)</small>
+                                                {% endif %}
                                             </div>
-                                        {% endif %}
-                                    {% endwith %}
+                                        {% endwith %}
+                                    {% else %}
+                                        <div class="pnl zero">₹0</div>
+                                        <div class="day-details">
+                                            <strong>{{ day_date }}</strong><br>
+                                            No trade / ₹0.00
+                                            {% if day_date == today_str and bot_running %}
+                                                <br><small class="text-info">(Bot running - waiting for close)</small>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
                                 </div>
                             {% endwith %}
                         {% endif %}
@@ -384,14 +382,14 @@
             <div class="card-body">
                 <div class="mb-3 d-flex justify-content-between">
                     <strong>Total P&L:</strong>
-                    <span class="{% if stats.total_pnl > 0 %}profit{% elif stats.total_pnl < 0 %}loss{% else %}zero{% endif %}">
-                        ₹{{ stats.total_pnl|floatformat:2|default:"0.00" }}
+                    <span class="{% if stats.total_pnl|greater_than:0 %}profit{% elif stats.total_pnl|less_than:0 %}loss{% else %}zero{% endif %}">
+                        ₹{{ stats.total_pnl|round_decimal:2|default:"0.00" }}
                     </span>
                 </div>
                 <div class="mb-3 d-flex justify-content-between">
                     <strong>Average Daily P&L:</strong>
-                    <span class="{% if stats.average_pnl > 0 %}profit{% elif stats.average_pnl < 0 %}loss{% else %}zero{% endif %}">
-                        ₹{{ stats.average_pnl|floatformat:2|default:"0.00" }}
+                    <span class="{% if stats.average_pnl|greater_than:0 %}profit{% elif stats.average_pnl|less_than:0 %}loss{% else %}zero{% endif %}">
+                        ₹{{ stats.average_pnl|round_decimal:2|default:"0.00" }}
                     </span>
                 </div>
                 <div class="mb-3 d-flex justify-content-between">
@@ -404,18 +402,18 @@
                 </div>
                 <div class="mb-3 d-flex justify-content-between">
                     <strong>Best Day:</strong>
-                    <span class="profit">₹{{ stats.max_pnl|floatformat:2|default:"0.00" }}</span>
+                    <span class="profit">₹{{ stats.max_pnl|round_decimal:2|default:"0.00" }}</span>
                 </div>
                 <div class="mb-3 d-flex justify-content-between">
                     <strong>Worst Day:</strong>
-                    <span class="loss">₹{{ stats.min_pnl|floatformat:2|default:"0.00" }}</span>
+                    <span class="loss">₹{{ stats.min_pnl|round_decimal:2|default:"0.00" }}</span>
                 </div>
                 <div class="mb-3 d-flex justify-content-between">
-                    <strong>Win Rate:</strong>
+                    <strong>Win Rate (daily):</strong>
                     {% with total_days=stats.positive_days|add:stats.negative_days %}
                         {% if total_days > 0 %}
                             {{ stats.positive_days }} / {{ total_days }} 
-                            ({{ stats.positive_days|div:total_days|multiply:100|round_decimal:1 }}%)
+                            ({{ stats.positive_days|percentage:total_days|round_decimal:1 }}%)
                         {% else %}
                             —
                         {% endif %}
@@ -429,19 +427,19 @@
                 <h5 class="mb-0"><i class="fas fa-list-alt"></i> Daily P&L Details</h5>
             </div>
             <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                {% if daily_records %}
+                {% if daily_records or today_live_pnl != 0 %}
                     {% for record in daily_records %}
                         <div class="d-flex justify-content-between align-items-center mb-2 p-2 
-                            {% if record.pnl > 0 %}profit-bg
-                            {% elif record.pnl < 0 %}loss-bg
+                            {% if record.pnl|greater_than:0 %}profit-bg
+                            {% elif record.pnl|less_than:0 %}loss-bg
                             {% else %}zero-bg{% endif %}">
                             <div>
                                 <strong>{{ record.date|date:"D, M d" }}</strong><br>
                                 <small class="text-muted">{{ record.total_trades|default:0 }} trades</small>
                             </div>
                             <div class="text-end">
-                                <span class="{% if record.pnl > 0 %}profit{% elif record.pnl < 0 %}loss{% else %}zero{% endif %}">
-                                    ₹{{ record.pnl|floatformat:2|default:"0.00" }}
+                                <span class="{% if record.pnl|greater_than:0 %}profit{% elif record.pnl|less_than:0 %}loss{% else %}zero{% endif %}">
+                                    ₹{{ record.pnl|round_decimal:2|default:"0.00" }}
                                 </span><br>
                                 <small class="text-muted">
                                     {{ record.win_trades|default:0 }}W / {{ record.loss_trades|default:0 }}L
@@ -449,9 +447,26 @@
                             </div>
                         </div>
                     {% endfor %}
+
+                    {% if today_live_pnl != 0 and not today_record_exists %}
+                        <div class="d-flex justify-content-between align-items-center mb-2 p-2 
+                            {% if today_live_pnl|greater_than:0 %}profit-bg
+                            {% elif today_live_pnl|less_than:0 %}loss-bg
+                            {% else %}zero-bg{% endif %}">
+                            <div>
+                                <strong>Today (Live)</strong><br>
+                                <small class="text-muted">Unrealized (bot running)</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="{% if today_live_pnl|greater_than:0 %}profit{% elif today_live_pnl|less_than:0 %}loss{% else %}zero{% endif %}">
+                                    ₹{{ today_live_pnl|round_decimal:2 }}
+                                </span>
+                            </div>
+                        </div>
+                    {% endif %}
                 {% else %}
                     <p class="text-muted text-center py-4">
-                        No P&L records found for {{ month_name }} {{ year }}.
+                        No P&L records or live data found for {{ month_name }} {{ year }}.
                     </p>
                 {% endif %}
             </div>

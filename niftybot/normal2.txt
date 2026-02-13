@@ -1,0 +1,79 @@
+from trading.models import BotStatus
+from datetime import date
+
+bs = BotStatus.objects.get(user__username='balaji')  # adjust username
+today = date.today()
+
+print("Today:", today)
+print("entry_attempted_date:", bs.entry_attempted_date)
+print("trade_taken_today:", bs.state_json.get('trade_taken_today'))
+print("trade_active:", bs.state_json.get('trade_active'))
+print("qty:", bs.state_json.get('qty'))
+------------------------------------------------------------------
+# ---------------------------------------------------------------------
+from trading.models import BotStatus, User
+
+user = User.objects.get(username='balaji')
+bs = BotStatus.objects.get(user=user)
+
+# Optional safety check
+if bs.state_json.get('trade_active', False):
+    print("WARNING: trade_active is still True! Position may still be open.")
+    confirm = input("Continue reset anyway? (yes/no): ").strip().lower()
+    if confirm != 'yes':
+        print("Reset cancelled.")
+        exit()
+
+# Reset the DB-level lock
+bs.entry_attempted_date = None
+bs.last_successful_entry = None
+
+# Also reset the in-state flag (strongest protection)
+state = bs.state_json or {}
+state['trade_taken_today'] = False
+state['trade_active'] = False   # only if you're sure position is closed
+bs.state_json = state
+
+bs.save()
+
+print("Reset complete! Bot can now attempt new entry today.")
+------------------------------------------------------------------------------------------------
+
+
+sudo python manage.py runserver 0.0.0.0:80
+
+sudo apt update
+sudo apt install python3-venv python3-pip nginx gunicorn
+
+sudo nano /etc/nginx/sites-available/nifty-trading-bot
+
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name 13.200.11.202;  # or your domain later
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Optional: serve static files directly (recommended)
+    location /static/ {
+        alias /home/ubuntu/yourproject/static/;  # ← change to your actual static folder path
+    }
+
+    location /media/ {
+        alias /home/ubuntu/yourproject/media/;   # ← change if you use media
+    }
+}
+
+sudo ln -s /etc/nginx/sites-available/nifty-trading-bot /etc/nginx/sites-enabled/
+
+sudo nginx -t
+sudo systemctl restart nginx
+
+gunicorn --bind 127.0.0.1:8000 niftybot.wsgi:application

@@ -860,55 +860,79 @@ setInterval(updateMarketStatus, 1000);
 
 {% if user.is_staff %}
     // ────────────────────────────────────────────────
-    // LIVE REFRESH + TOGGLE BUTTON (AJAX)
+    // LIVE REFRESH + TOGGLE BUTTON (OPTIMISTIC UI + FAST POLLING)
     // ────────────────────────────────────────────────
-    function refreshBotData() {
+
+    let fastPollInterval = null;
+    const FAST_POLL_MS = 1200;          // every 1.2 seconds after action
+    const FAST_POLL_DURATION = 20000;   // for ~20 seconds
+
+    function startFastPolling() {
+        if (fastPollInterval) clearInterval(fastPollInterval);
+        fastPollInterval = setInterval(() => refreshBotData(true), FAST_POLL_MS);
+        setTimeout(() => {
+            if (fastPollInterval) {
+                clearInterval(fastPollInterval);
+                fastPollInterval = null;
+            }
+        }, FAST_POLL_DURATION);
+    }
+
+    function refreshBotData(silent = false) {
         const loadingElements = [
             document.getElementById('target-card'),
             document.getElementById('stop-card'),
             document.getElementById('pnl-card')
         ];
 
-        loadingElements.forEach(el => {
-            if (el) el.classList.add('loading');
-        });
+        if (!silent) {
+            loadingElements.forEach(el => el?.classList.add('loading'));
+        }
 
         fetch('{% url "bot_status" %}')
             .then(response => response.json())
             .then(data => {
-                // Status indicator
                 const statusEl = document.getElementById('status-indicator');
                 const activeEl = document.getElementById('status-active');
                 const timeEl = document.getElementById('status-time');
                 const toggleBtn = document.getElementById('toggle-bot-btn');
 
-                if (data.is_running) {
+                const isActuallyRunning = data.is_running || data.flag_set;
+
+                if (isActuallyRunning) {
                     statusEl.className = 'status-indicator status-running';
                     statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> RUNNING';
                     activeEl.className = 'status-indicator status-running px-3 py-2';
                     activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Active';
                     timeEl.textContent = 'Started ' + (data.last_started ? new Date(data.last_started).toLocaleString() : 'recently');
-                    toggleBtn.className = 'btn btn-danger btn-lg w-100';
-                    toggleBtn.innerHTML = '<i class="fas fa-power-off me-2"></i> Stop Algorithm';
+                    if (toggleBtn) {
+                        toggleBtn.className = 'btn btn-danger btn-lg w-100';
+                        toggleBtn.innerHTML = '<i class="fas fa-power-off me-2"></i> Stop Algorithm';
+                        toggleBtn.disabled = false;
+                    }
                 } else {
                     statusEl.className = 'status-indicator status-stopped';
                     statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> STOPPED';
                     activeEl.className = 'status-indicator status-stopped px-3 py-2';
                     activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Inactive';
                     timeEl.textContent = 'Stopped ' + (data.last_stopped ? new Date(data.last_stopped).toLocaleString() : 'recently');
-                    toggleBtn.className = 'btn btn-success btn-lg w-100';
-                    toggleBtn.innerHTML = '<i class="fas fa-play me-2"></i> Start Algorithm';
+                    if (toggleBtn) {
+                        toggleBtn.className = 'btn btn-success btn-lg w-100';
+                        toggleBtn.innerHTML = '<i class="fas fa-play me-2"></i> Start Algorithm';
+                        toggleBtn.disabled = false;
+                    }
                 }
 
                 // Target & Stop-Loss
-                const targetEl = document.getElementById('daily-target');
-                const stopEl = document.getElementById('daily-stop');
-                targetEl.textContent = data.daily_target && data.daily_target != 0 
-                    ? '₹' + data.daily_target.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
-                    : '---';
-                stopEl.textContent = data.daily_stop_loss && data.daily_stop_loss != 0 
-                    ? '₹' + data.daily_stop_loss.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
-                    : '---';
+                document.getElementById('daily-target').textContent = 
+                    data.daily_target && data.daily_target != 0 
+                        ? '₹' + data.daily_target.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
+                        : '---';
+
+                document.getElementById('daily-stop').textContent = 
+                    data.daily_stop_loss && data.daily_stop_loss != 0 
+                        ? '₹' + data.daily_stop_loss.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
+                        : '---';
 
                 // Live PnL
                 const pnlEl = document.getElementById('current-pnl');
@@ -916,13 +940,13 @@ setInterval(updateMarketStatus, 1000);
                 pnlEl.textContent = '₹' + pnlValue.toLocaleString('en-IN');
                 pnlEl.className = `value ${data.current_unrealized_pnl >= 0 ? 'text-success' : 'text-danger'}`;
 
-                // Heartbeat age
+                // Heartbeat age with color
                 const ageEl = document.getElementById('heartbeat-age');
                 if (ageEl && data.last_heartbeat_ago) {
                     let ageClass = 'text-danger';
                     if (data.last_heartbeat_ago.includes('0 min') || data.last_heartbeat_ago.includes('1 min')) {
                         ageClass = 'text-success';
-                    } else if (data.last_heartbeat_ago.includes('2') || data.last_heartbeat_ago.includes('3') || data.last_heartbeat_ago.includes('4')) {
+                    } else if (data.last_heartbeat_ago.match(/2|3|4/)) {
                         ageClass = 'text-warning';
                     }
                     ageEl.innerHTML = `Last heartbeat: <span class="${ageClass}">${data.last_heartbeat_ago}</span>`;
@@ -934,21 +958,31 @@ setInterval(updateMarketStatus, 1000);
                     errorEl.textContent = data.last_error;
                 }
 
-                // Remove loading state
-                loadingElements.forEach(el => {
-                    if (el) el.classList.remove('loading');
-                });
+                if (!silent) {
+                    loadingElements.forEach(el => el?.classList.remove('loading'));
+                }
             })
             .catch(err => {
                 console.error('Failed to refresh bot data:', err);
+                if (!silent) {
+                    loadingElements.forEach(el => el?.classList.remove('loading'));
+                }
             });
     }
 
-    // Toggle bot start/stop via AJAX
+    // Toggle bot with optimistic UI
     document.getElementById('toggle-bot-btn')?.addEventListener('click', function(e) {
         e.preventDefault();
-        const isRunning = this.textContent.includes('Stop');
-        const url = isRunning ? '{% url "stop_bot" %}' : '{% url "start_bot" %}';
+        
+        const btn = this;
+        const wasRunning = btn.textContent.trim().includes('Stop');
+        const targetState = wasRunning ? 'STOPPING' : 'STARTING';
+
+        // Optimistic UI: show processing state immediately
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i> ${targetState}...`;
+        
+        const url = wasRunning ? '{% url "stop_bot" %}' : '{% url "start_bot" %}';
 
         fetch(url, {
             method: 'POST',
@@ -959,21 +993,30 @@ setInterval(updateMarketStatus, 1000);
         })
         .then(response => {
             if (response.ok) {
-                // Show success toast
+                // Success → start fast polling
+                startFastPolling();
                 const toast = new bootstrap.Toast(document.getElementById('save-toast'));
                 toast.show();
-                // Refresh data after toggle
-                setTimeout(refreshBotData, 1500);
             } else {
+                // Server error → revert UI
+                refreshBotData(true);
                 const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-                document.getElementById('error-message').textContent = 'Failed to toggle algorithm.';
+                document.getElementById('error-message').textContent = 'Server rejected the request.';
                 errorToast.show();
             }
         })
         .catch(err => {
+            // Network error → revert
+            refreshBotData(true);
             const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-            document.getElementById('error-message').textContent = 'Error: ' + err.message;
+            document.getElementById('error-message').textContent = 'Network error: ' + err.message;
             errorToast.show();
+        })
+        .finally(() => {
+            // Re-enable button quickly
+            setTimeout(() => {
+                btn.disabled = false;
+            }, 800);
         });
     });
 
@@ -1001,6 +1044,7 @@ setInterval(updateMarketStatus, 1000);
                 const toast = new bootstrap.Toast(document.getElementById('save-toast'));
                 toast.show();
                 document.getElementById('max-lots-input').value = data.new_value || value;
+                startFastPolling(); // refresh status quickly after config change
             } else {
                 const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
                 document.getElementById('error-message').textContent = data.error || 'Failed to save';
@@ -1014,11 +1058,11 @@ setInterval(updateMarketStatus, 1000);
         });
     });
 
-    // Initial load + periodic refresh (every 12 seconds)
+    // Initial load + normal polling (every 12s)
     refreshBotData();
-    setInterval(refreshBotData, 12000);
+    setInterval(() => refreshBotData(true), 12000);
 
-    // Strangle animation (now tries to use real data if available)
+    // Strangle animation
     function animateStrangle() {
         const marker = document.getElementById('price-marker');
         if (!marker) return;
@@ -1039,6 +1083,7 @@ setInterval(updateMarketStatus, 1000);
     }
     setInterval(animateStrangle, 8000);
     animateStrangle();
+
 {% endif %}
 </script>
 

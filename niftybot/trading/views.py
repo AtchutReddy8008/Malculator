@@ -126,7 +126,6 @@ def broker_page(request):
             broker_obj.broker_name = 'ZERODHA'
             broker_obj.save()
 
-            # Only trigger token generation if we don't already have a valid token
             if not broker or not broker.access_token:
                 generate_zerodha_token_task.delay(broker_obj.id)
                 messages.success(
@@ -176,11 +175,27 @@ def pnl_calendar(request):
     else:
         month_end = date(year, month + 1, 1) - timedelta(days=1)
 
+    # Fetch historical DailyPnL records
     daily_records = DailyPnL.objects.filter(
         user=request.user,
         date__range=[month_start, month_end]
     ).order_by('date')
 
+    # Get live data for today from BotStatus
+    today = date.today()
+    bot_status = BotStatus.objects.filter(user=request.user).first()
+    today_pnl = 0.0
+    today_record_exists = daily_records.filter(date=today).exists()
+
+    if bot_status and bot_status.current_unrealized_pnl is not None:
+        today_pnl = float(bot_status.current_unrealized_pnl)
+
+    # Build lookup dict: date → pnl (use live value for today if bot running)
+    pnl_by_date = {rec.date: float(rec.pnl) for rec in daily_records}
+    if bot_status and bot_status.is_running:
+        pnl_by_date[today] = today_pnl
+
+    # Monthly stats with fallback
     monthly_stats = daily_records.aggregate(
         total_pnl=Sum('pnl'),
         average_pnl=Avg('pnl'),
@@ -188,7 +203,24 @@ def pnl_calendar(request):
         negative_days=Count('id', filter=Q(pnl__lt=0)),
         max_pnl=Max('pnl'),
         min_pnl=Min('pnl'),
-    )
+    ) or {
+        'total_pnl': 0, 'average_pnl': 0,
+        'positive_days': 0, 'negative_days': 0,
+        'max_pnl': 0, 'min_pnl': 0
+    }
+
+    # Convert None → 0
+    for key in monthly_stats:
+        if monthly_stats[key] is None:
+            monthly_stats[key] = 0
+
+    # Debug output (check server logs)
+    print(f"[PnL Calendar Debug] User: {request.user.username} | Month: {month}/{year}")
+    print(f" → Found {daily_records.count()} DailyPnL records in DB")
+    print(f" → Today live PnL from BotStatus: ₹{today_pnl:,.2f}")
+    print(f" → Monthly total from DB: ₹{monthly_stats['total_pnl']:,.2f}")
+    if today in pnl_by_date:
+        print(f" → Today displayed PnL: ₹{pnl_by_date[today]:,.2f} (live override applied)")
 
     context = {
         'year': year,
@@ -196,18 +228,19 @@ def pnl_calendar(request):
         'month_name': date(year, month, 1).strftime('%B'),
         'calendar': calendar_grid,
         'daily_records': daily_records,
-        'stats': monthly_stats or {
-            'total_pnl': 0, 'average_pnl': 0,
-            'positive_days': 0, 'negative_days': 0,
-            'max_pnl': 0, 'min_pnl': 0
-        },
+        'pnl_by_date': pnl_by_date,           # For template lookup
+        'today_live_pnl': today_pnl,
+        'today_record_exists': today_record_exists,
+        'stats': monthly_stats,
         'prev_month': month - 1 if month > 1 else 12,
         'prev_year': year if month > 1 else year - 1,
         'next_month': month + 1 if month < 12 else 1,
         'next_year': year if month < 12 else year + 1,
         'today_str': date.today().strftime('%Y-%m-%d'),
         'current_month_str': date(year, month, 1).strftime('%B %Y'),
+        'bot_running': bot_status.is_running if bot_status else False,
     }
+
     return render(request, 'trading/pnl_calendar.html', context)
 
 
@@ -222,7 +255,7 @@ def algorithms_page(request):
             'description': 'NIFTY Weekly Options Trading Strategy',
             'underlying': 'NIFTY 50',
             'lot_size': 65,
-            'entry_window': '09:20:00 - 09:22:30 IST',
+            'entry_window': '09:21:00 - 09:26:00 IST',
             'exit_time': '15:00:00 IST',
             'max_lots': 50,
             'strategy_type': 'Options Selling with Hedges',
@@ -234,8 +267,8 @@ def algorithms_page(request):
         strategy_rules = [
             'No trading on Tuesdays (optional)',
             'No trading on expiry day',
-            'Entry only in widened window 9:20–9:23:30',
-            'VIX must be between 9-22 for entry',
+            'Entry only in widened window 9:21–9:26',
+            'VIX advisory range 6–35',
             'Daily target: 2% of margin',
             'Stop loss: Equal to daily target',
             'Defensive adjustments at 50 points from short strike',
@@ -335,10 +368,6 @@ def get_worst_day(user):
 
 
 def get_current_streak(user, streak_type='win'):
-    """
-    Calculate current win or loss streak based on daily PnL.
-    streak_type: 'win' or 'loss'
-    """
     streak = 0
     current = date.today()
     sign = 1 if streak_type == 'win' else -1
@@ -606,7 +635,6 @@ def coming_soon_placeholder(request):
     }
     return render(request, 'trading/coming_soon.html', context)
 
-# Add this at the very bottom of trading/views.py (after all other views)
 
 @login_required
 def connect_zerodha(request):
