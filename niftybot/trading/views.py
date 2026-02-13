@@ -31,6 +31,9 @@ from .tasks import run_user_bot, generate_zerodha_token_task
 from .core.auth import generate_and_set_access_token_db
 from kiteconnect import KiteConnect
 
+# Import Engine for live PnL fallback (avoid circular import issues by importing inside function)
+# from .core.bot_original import Engine, DBLogger
+
 
 def home(request):
     if request.user.is_authenticated:
@@ -94,22 +97,97 @@ def dashboard(request):
 
 @login_required
 def dashboard_stats(request):
-    """JSON endpoint for live dashboard updates"""
+    """JSON endpoint for live dashboard updates - with real-time fallback PnL calculation"""
     user = request.user
     bot_status = BotStatus.objects.filter(user=user).first()
-
-    stats = get_user_stats(user)
+    now = timezone.now()
 
     data = {
         'bot_running': bot_status.is_running if bot_status else False,
-        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0) if bot_status else 0.0,
-        'daily_pnl': float(stats['daily_pnl'].pnl if stats['daily_pnl'] else 0),
-        'weekly_pnl': float(stats['weekly_pnl']),
-        'monthly_pnl': float(stats['monthly_pnl']),
-        'last_error': bot_status.last_error if bot_status and bot_status.last_error else None,
-        'timestamp': timezone.now().isoformat(),
+        'last_heartbeat_ago': "Never",
+        'current_unrealized_pnl': 0.0,
+        'current_margin': 0.0,
+        'daily_target': 0.0,
+        'daily_stop_loss': 0.0,
+        'timestamp': now.isoformat(),
+        'pnl_source': 'cached',  # 'cached', 'live_fallback', 'zero_fallback', 'error'
     }
+
+    if bot_status:
+        # Heartbeat age
+        if bot_status.last_heartbeat:
+            delta = now - bot_status.last_heartbeat
+            data['last_heartbeat_ago'] = f"{delta.total_seconds() // 60:.0f} min ago"
+
+        # Try cached value first
+        cached_pnl = float(bot_status.current_unrealized_pnl or 0)
+        data['current_unrealized_pnl'] = cached_pnl
+        data['current_margin'] = float(bot_status.current_margin or 0)
+        data['daily_target'] = float(bot_status.daily_profit_target or 0)
+        data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
+
+        # If cached PnL is 0 and bot is running → try live calculation as fallback
+        if cached_pnl == 0 and bot_status.is_running:
+            try:
+                # Import here to avoid circular import issues
+                from .core.bot_original import Engine, DBLogger
+                
+                broker = Broker.objects.filter(user=user, broker_name='ZERODHA').first()
+                if not broker or not broker.access_token:
+                    raise Exception("No valid Zerodha broker found")
+
+                logger = DBLogger(user)
+                engine = Engine(user, broker, logger)
+                live_pnl = engine.algo_pnl()
+
+                if live_pnl != 0:
+                    data['current_unrealized_pnl'] = float(live_pnl)
+                    data['pnl_source'] = 'live_fallback'
+                    # Optionally persist it to avoid repeated heavy calc
+                    bot_status.current_unrealized_pnl = live_pnl
+                    bot_status.save(update_fields=['current_unrealized_pnl'])
+                else:
+                    data['pnl_source'] = 'zero_fallback'
+
+            except Exception as e:
+                data['pnl_source'] = 'error'
+                data['error_message'] = str(e)[:100]
+                LogEntry.objects.create(
+                    user=user,
+                    level='ERROR',
+                    message=f"Live PnL fallback failed in dashboard_stats: {str(e)}",
+                    details={'trace': traceback.format_exc()[:500]}
+                )
+
     return JsonResponse(data)
+
+
+@login_required
+def debug_pnl(request):
+    """Temporary debug endpoint - remove after testing"""
+    bot_status = BotStatus.objects.filter(user=request.user).first()
+    if not bot_status or not bot_status.is_running:
+        return JsonResponse({'error': 'Bot not running or no BotStatus'})
+
+    try:
+        from .core.bot_original import Engine, DBLogger
+        broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
+        if not broker or not broker.access_token:
+            return JsonResponse({'error': 'No valid Zerodha broker'})
+
+        logger = DBLogger(request.user)
+        engine = Engine(request.user, broker, logger)
+        live_pnl = engine.algo_pnl()
+
+        return JsonResponse({
+            'live_calculated_pnl': round(live_pnl, 2),
+            'cached_pnl_in_db': float(bot_status.current_unrealized_pnl or 0),
+            'legs_count': len(engine.state.data.get('algo_legs', {})),
+            'last_heartbeat': bot_status.last_heartbeat.isoformat() if bot_status.last_heartbeat else None,
+            'bot_running': bot_status.is_running,
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @login_required
@@ -214,21 +292,13 @@ def pnl_calendar(request):
         if monthly_stats[key] is None:
             monthly_stats[key] = 0
 
-    # Debug output (check server logs)
-    print(f"[PnL Calendar Debug] User: {request.user.username} | Month: {month}/{year}")
-    print(f" → Found {daily_records.count()} DailyPnL records in DB")
-    print(f" → Today live PnL from BotStatus: ₹{today_pnl:,.2f}")
-    print(f" → Monthly total from DB: ₹{monthly_stats['total_pnl']:,.2f}")
-    if today in pnl_by_date:
-        print(f" → Today displayed PnL: ₹{pnl_by_date[today]:,.2f} (live override applied)")
-
     context = {
         'year': year,
         'month': month,
         'month_name': date(year, month, 1).strftime('%B'),
         'calendar': calendar_grid,
         'daily_records': daily_records,
-        'pnl_by_date': pnl_by_date,           # For template lookup
+        'pnl_by_date': pnl_by_date,
         'today_live_pnl': today_pnl,
         'today_record_exists': today_record_exists,
         'stats': monthly_stats,

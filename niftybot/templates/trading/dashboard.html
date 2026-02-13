@@ -104,6 +104,7 @@
         line-height: 1;
         margin-bottom: 0.5rem;
         transition: all 0.4s ease;
+        min-height: 3.2rem; /* prevent layout shift when "Calculating..." */
     }
 
     .stat-card .label {
@@ -274,6 +275,12 @@
         50%  { transform: scale(0.95); }
         100% { transform: scale(1); }
     }
+
+    .calculating {
+        color: var(--warning);
+        font-style: italic;
+        opacity: 0.8;
+    }
 </style>
 {% endblock %}
 
@@ -372,13 +379,9 @@
                                         </span>
                                     </li>
                                     <li class="mb-4">
-                                        <strong>Last Started:</strong> 
-                                        <span class="ms-2">
-                                            {% if bot_status.last_started %}
-                                                {{ bot_status.last_started|date:"d M Y H:i" }}
-                                            {% else %}
-                                                Never
-                                            {% endif %}
+                                        <strong>Heartbeat:</strong> 
+                                        <span id="heartbeat-status" class="ms-2">
+                                            Calculating...
                                         </span>
                                     </li>
                                     <li class="mb-4">
@@ -575,39 +578,58 @@
 </main>
 
 <script>
-// Silent live refresh - no visible error messages
+// Live dashboard updater - aggressive polling when bot is running
 function refreshDashboard() {
+    const botIsRunning = document.getElementById('bot-status-value')?.textContent.trim() === 'Running';
+    
+    // Only poll if bot is running
+    if (!botIsRunning) return;
+
     const elements = {
         pnl: document.getElementById('current-pnl'),
         statusValue: document.getElementById('bot-status-value'),
         statusDetail: document.getElementById('bot-status-detail'),
         today: document.getElementById('today-pnl'),
         weekly: document.getElementById('weekly-pnl'),
-        monthly: document.getElementById('monthly-pnl')
+        monthly: document.getElementById('monthly-pnl'),
+        heartbeat: document.getElementById('heartbeat-status')
     };
 
     fetch('{% url "dashboard_stats" %}', {
+        method: 'GET',
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(response => {
-        if (!response.ok) return; // silent fail - no popup
+        if (!response.ok) throw new Error('Network response not ok');
         return response.json();
     })
     .then(data => {
-        if (!data) return; // silent fail
-
-        // Current unrealized P&L
+        // Current P&L with animation
         if (elements.pnl) {
-            const val = data.current_unrealized_pnl.toFixed(2);
-            const oldVal = elements.pnl.textContent.replace('₹', '').trim();
-            elements.pnl.textContent = `₹${val}`;
+            const newPnl = data.current_unrealized_pnl.toFixed(2);
+            const oldPnl = elements.pnl.textContent.replace('₹', '').replace(',', '').trim();
 
-            if (oldVal !== val) {
+            if (newPnl !== oldPnl) {
+                elements.pnl.textContent = `₹${parseFloat(newPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
                 elements.pnl.classList.add('number-change');
                 setTimeout(() => elements.pnl.classList.remove('number-change'), 1200);
+
+                // Update color
+                elements.pnl.className = `fw-bold ms-2 ${data.current_unrealized_pnl >= 0 ? 'profit' : 'loss'}`;
             }
 
-            elements.pnl.className = `fw-bold ms-2 ${data.current_unrealized_pnl >= 0 ? 'profit' : 'loss'}`;
+            // Show source in console for debug
+            console.log('PnL update:', {
+                value: newPnl,
+                source: data.pnl_source || 'unknown',
+                heartbeat: data.last_heartbeat_ago
+            });
+        }
+
+        // Heartbeat status
+        if (elements.heartbeat) {
+            elements.heartbeat.textContent = data.last_heartbeat_ago || 'Never';
+            elements.heartbeat.className = data.last_heartbeat_ago.includes('min') ? 'text-success' : 'text-warning';
         }
 
         // Bot status
@@ -620,13 +642,13 @@ function refreshDashboard() {
                 : '<span class="text-danger">STOPPED</span>';
         }
 
-        // Aggregates
+        // Aggregates (today, weekly, monthly)
         ['today', 'weekly', 'monthly'].forEach(key => {
             const el = elements[key];
             if (el) {
                 const value = data[`${key}_pnl`].toFixed(2);
-                const oldVal = el.textContent.replace('₹', '').trim();
-                el.textContent = `₹${value}`;
+                const oldVal = el.textContent.replace('₹', '').replace(',', '').trim();
+                el.textContent = `₹${parseFloat(value).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
                 if (oldVal !== value) {
                     el.classList.add('number-change');
@@ -637,13 +659,24 @@ function refreshDashboard() {
             }
         });
     })
-    .catch(() => {
-        // Silent catch - no popup, no console spam
+    .catch(err => {
+        console.warn('Dashboard stats fetch failed:', err);
+        // Silent fail - no user-facing error
     });
 }
 
-// Refresh every 8 seconds + on load
-setInterval(refreshDashboard, 8000);
-window.addEventListener('load', refreshDashboard);
+// Poll every 5 seconds when bot is running
+setInterval(() => {
+    if (document.getElementById('bot-status-value')?.textContent.trim() === 'Running') {
+        refreshDashboard();
+    }
+}, 5000);
+
+// Initial fetch on load
+window.addEventListener('load', () => {
+    refreshDashboard();
+    // Extra fetch after 3 seconds in case of slow load
+    setTimeout(refreshDashboard, 3000);
+});
 </script>
 {% endblock %}

@@ -24,8 +24,8 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(12, 41, 0)
-    ENTRY_END = dtime(12, 42, 30)
+    ENTRY_START = dtime(9, 21, 0) # Your requested window
+    ENTRY_END = dtime(9, 22, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
     EXIT_TIME = dtime(15, 0)
     MARKET_CLOSE = dtime(15, 30)
@@ -53,7 +53,6 @@ class Config:
     ORDER_TIMEOUT = 10
     PNL_CHECK_INTERVAL_SECONDS = 1
     MIN_HOLD_SECONDS_FOR_PROFIT = 1800
-    HEARTBEAT_INTERVAL = 5          # Reduced from 10 → faster UI updates
 
 INDIA_HOLIDAYS = holidays.India()
 EXTRA_NSE_HOLIDAYS = set()
@@ -248,8 +247,7 @@ def create_leg(symbol: str, side: str, qty: int, entry_price: float):
         "qty": qty,
         "entry_price": entry_price,
         "exit_price": 0.0,
-        "status": "OPEN",
-        "last_known_ltp": entry_price
+        "status": "OPEN"
     }
 
 # ===================== ENGINE =====================
@@ -405,66 +403,55 @@ class Engine:
         return self._last_valid_vix
 
     def bulk_ltp(self, symbols: List[str]) -> Dict[str, float]:
-        if not symbols:
-            return {}
-            
         now = time.time()
         result = {}
         to_fetch = []
-        
-        # Serve from very fresh cache only (8 seconds)
         for sym in symbols:
+            if not sym:
+                continue
             cache_entry = self.ltp_cache.get(sym.strip())
-            if cache_entry and now - cache_entry['ts'] < 8:
+            if cache_entry and now - cache_entry['ts'] < 30:
                 result[sym] = cache_entry['price']
             else:
                 to_fetch.append(sym.strip())
-        
-        if not to_fetch:
-            return result
-        
-        # Retry up to 3 times with small backoff
-        for attempt in range(3):
+       
+        if to_fetch:
+            time.sleep(0.5)
             try:
-                time.sleep(0.3 * attempt)  # 0 → 0.3 → 0.6 seconds
                 quotes = self.kite.quote([f"{Config.EXCHANGE}:{s}" for s in to_fetch])
-                
-                valid_count = 0
                 for full, data in quotes.items():
                     sym = full.split(':')[1]
                     price = data.get('last_price', 0.0)
                     if price > 0:
                         result[sym] = price
                         self.ltp_cache[sym] = {'price': price, 'ts': now}
-                        valid_count += 1
                     else:
                         last_good = self.ltp_cache.get(sym, {'price': 0.0})['price']
                         if last_good > 0:
                             result[sym] = last_good
                         else:
-                            # Ultimate fallback: entry price
-                            for leg in self.state.data.get("algo_legs", {}).values():
-                                if leg.get("symbol") == sym:
-                                    result[sym] = leg.get("entry_price", 0.0)
+                            legs = self.state.data.get("algo_legs", {})
+                            for leg in legs.values():
+                                if leg["symbol"] == sym:
+                                    result[sym] = leg["entry_price"]
                                     break
                             else:
                                 result[sym] = 0.0
-                
-                self.logger.info("bulk_ltp success", {
-                    "attempt": attempt + 1,
-                    "fetched": len(to_fetch),
-                    "valid_prices": valid_count
-                })
-                return result
-                
             except Exception as e:
-                self.logger.warning(f"bulk_ltp attempt {attempt+1} failed", {
-                    "error": str(e),
-                    "symbols_count": len(to_fetch)
-                })
-                if attempt == 2:
-                    self.logger.error("bulk_ltp failed after 3 attempts - using fallbacks")
-        
+                self.logger.warning(f"Bulk LTP failed - using fallback", {"error": str(e), "symbols": to_fetch})
+                for sym in to_fetch:
+                    last_good = self.ltp_cache.get(sym, {'price': 0.0})['price']
+                    if last_good > 0:
+                        result[sym] = last_good
+                    else:
+                        legs = self.state.data.get("algo_legs", {})
+                        for leg in legs.values():
+                            if leg["symbol"] == sym:
+                                result[sym] = leg["entry_price"]
+                                break
+                        else:
+                            result[sym] = 0.0
+       
         return result
 
     def find_option_symbol(self, strike: int, cp: str) -> Optional[str]:
@@ -676,27 +663,17 @@ class Engine:
             sym = leg.get("symbol", "").strip()
             if not sym:
                 continue
-            ltp_val = ltps.get(sym)
-            if ltp_val is None or ltp_val <= 0:
+            ltp_val = ltps.get(sym, leg["entry_price"])
+            if ltp_val == leg["entry_price"]:
                 fallback_count += 1
-                ltp_val = leg.get("last_known_ltp", leg["entry_price"])
-                if ltp_val == leg["entry_price"]:
-                    self.logger.debug(f"Fallback to entry price for {sym}")
-            
             qty_abs = abs(leg["qty"])
             if leg["side"] == "SELL":
                 total += (leg["entry_price"] - ltp_val) * qty_abs
             else:
                 total += (ltp_val - leg["entry_price"]) * qty_abs
-            
-            if ltp_val > 0 and ltp_val != leg["entry_price"]:
-                leg["last_known_ltp"] = ltp_val
        
         if fallback_count > 0:
-            self.logger.warning(f"PNL CALC USED FALLBACK FOR {fallback_count}/{len(legs)} legs → possible stale LTP", {
-                "fallback_count": fallback_count,
-                "total_legs": len(legs)
-            })
+            self.logger.warning(f"algo_pnl: {fallback_count} legs using entry_price fallback (LTP fetch may have failed)")
        
         return total
 
@@ -1405,7 +1382,7 @@ class TradingApplication:
         self._last_idle_date = None
         self._last_hourly_log = 0
         self._last_entry_check_time = 0.0
-        self._entry_guard_seconds = 60.0
+        self._entry_guard_seconds = 10.0
         self._last_token_health_check = time.time()
         self._daily_summary_saved = False # For market-close save
 
@@ -1637,25 +1614,17 @@ class TradingApplication:
                     except Exception as e:
                         self.logger.error("Market close PnL save failed", {"error": str(e)})
                
-                # Heartbeat - now every 5 seconds
-                if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
+                # Heartbeat
+                if time.time() - last_heartbeat >= 10:
                     try:
                         bot_status = BotStatus.objects.get(user=self.user)
-                        current_pnl = float(self.engine.algo_pnl() or 0)
-                        current_margin = float(self.engine.actual_used_capital() or 0)
-                        
-                        # Always save, even if zero
                         bot_status.last_heartbeat = timezone.now()
-                        bot_status.current_unrealized_pnl = current_pnl
-                        bot_status.current_margin = current_margin
+                        bot_status.current_unrealized_pnl = float(self.engine.algo_pnl() or 0)
+                        bot_status.current_margin = float(self.engine.actual_used_capital() or 0)
                         bot_status.save(update_fields=['last_heartbeat', 'current_unrealized_pnl', 'current_margin'])
-                        
-                        self.logger.info("Heartbeat saved", {
-                            "unrealized_pnl": round(current_pnl, 2),
-                            "margin": round(current_margin, 2)
-                        })
+                        self.logger.info("Heartbeat saved to BotStatus")
                     except Exception as e:
-                        self.logger.warning("Heartbeat save failed", {"error": str(e)})
+                        self.logger.warning("Heartbeat save failed - continuing anyway", {"error": str(e)})
                     last_heartbeat = time.time()
                
                 time.sleep(1.0) # Yield control to Celery
