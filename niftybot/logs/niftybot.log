@@ -2538,3 +2538,6 @@ WARNING 2026-02-13 19:10:04,573 tasks [SIGNAL] Received signal 2 — exiting worke
 WARNING 2026-02-13 19:40:43,334 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
 WARNING 2026-02-14 09:13:53,173 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
 WARNING 2026-02-14 10:12:46,960 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-16 09:20:37,018 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-16 09:35:18,503 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-16 21:34:47,227 tasks [SIGNAL] Received signal 2 — exiting worker gracefully

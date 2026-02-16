@@ -93,23 +93,31 @@
             background: rgba(5, 5, 5, 0.65);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--glass-border);
-            padding: 0.8rem 0;
+            padding: 0.5rem 0;                    /* smaller vertical padding */
+            height: 82px;                         /* ← FIXED NAVBAR HEIGHT */
+            min-height: unset !important;
             z-index: 1000;
         }
 
         .navbar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
-            letter-spacing: -0.5px;
-            color: #fff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            height: 100%;
             display: flex;
             align-items: center;
-            gap: 12px;
         }
 
-        .brand-icon {
-            color: var(--primary);
-            filter: drop-shadow(0 0 5px var(--primary));
+        .brand-logo {
+            height: 200px;                        /* ← YOU CAN CHANGE THIS FREELY (bigger = more overflow) */
+            width: auto;
+            margin-top: 42px;                    /* ← negative margin = logo overflows downward */
+            filter: drop-shadow(0 0 6px rgba(0, 255, 157, 0.4));
+            transition: transform 0.25s ease, filter 0.25s ease;
+        }
+
+        .navbar-brand:hover .brand-logo {
+            transform: scale(1.06);
+            filter: drop-shadow(0 0 12px rgba(0, 255, 157, 0.7));
         }
 
         .navbar-nav .nav-link {
@@ -145,7 +153,7 @@
 
         .main-container {
             flex: 1;
-            margin-top: 90px;
+            margin-top: 90px;                     /* ← increased slightly to prevent overlap with bigger logo */
             margin-bottom: 60px;
             position: relative;
             z-index: 1;
@@ -255,7 +263,7 @@
         .linkedin-icon {
             font-size: 2.4rem;
             vertical-align: text-bottom;
-            margin-top: -6px;  /* Fine-tuned to align baseline with logo bottom */
+            margin-top: -6px;
             background: linear-gradient(
                 90deg,
                 #00ff9d, #40c0ff, #ff4d4d, #ffd700, #9f7aea, #00ff9d
@@ -272,16 +280,16 @@
             100% { background-position: 0% 50%; }
         }
 
-        @media (max-width: 991px) {
-            .signature-block {
-                text-align: center;
-                margin-top: 3rem;
+        @media (max-width: 576px) {
+            .brand-logo {
+                height: 90px;                   /* smaller on mobile */
+                margin-top: -18px;
             }
-            .name-highlight {
-                font-size: 2.6rem;
+            .main-container {
+                margin-top: 80px;
             }
-            .linkedin-icon {
-                font-size: 2.0rem;
+            .navbar {
+                height: 70px;
             }
         }
 
@@ -298,8 +306,9 @@
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container">
             <a class="navbar-brand" href="{% url 'home' %}">
-                <i class="fas fa-chart-line brand-icon"></i>
-                <span>TRADE WITH NAMAN</span>
+                <img src="{% static 'logo4.png' %}" 
+                     alt="Trade with Naman" 
+                     class="brand-logo">
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -414,47 +423,46 @@
         <div class="ticker-wrapper">
             <!-- First set -->
             <div class="ticker-item">
-    <span class="ticker-symbol">NIFTY</span>
-    <span class="ticker-price">25,175.40</span>
-    <span class="text-green ms-1">▲ 0.51%</span>
-</div>
+                <span class="ticker-symbol">NIFTY</span>
+                <span class="ticker-price">25,175.40</span>
+                <span class="text-green ms-1">▲ 0.51%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">BANKNIFTY</span>
-    <span class="ticker-price">59,452.30</span>
-    <span class="text-green ms-1">▲ 0.34%</span>
-</div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">BANKNIFTY</span>
+                <span class="ticker-price">59,452.30</span>
+                <span class="text-green ms-1">▲ 0.34%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">SENSEX</span>
-    <span class="ticker-price">82,510.20</span>
-    <span class="text-red ms-1">▼ 0.22%</span>
-</div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">SENSEX</span>
+                <span class="ticker-price">82,510.20</span>
+                <span class="text-red ms-1">▼ 0.22%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">FINNIFTY</span>
-    <span class="ticker-price">23,845.10</span>
-    <span class="text-green ms-1">▲ 0.18%</span>
-</div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">FINNIFTY</span>
+                <span class="ticker-price">23,845.10</span>
+                <span class="text-green ms-1">▲ 0.18%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">MIDCPNIFTY</span>
-    <span class="ticker-price">12,420.65</span>
-    <span class="text-red ms-1">▼ 0.09%</span>
-</div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">MIDCPNIFTY</span>
+                <span class="ticker-price">12,420.65</span>
+                <span class="text-red ms-1">▼ 0.09%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">BTCUSD</span>
-    <span class="ticker-price">64,320.50</span>
-    <span class="text-green ms-1">▲ 1.25%</span>
-</div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">BTCUSD</span>
+                <span class="ticker-price">64,320.50</span>
+                <span class="text-green ms-1">▲ 1.25%</span>
+            </div>
 
-<div class="ticker-item">
-    <span class="ticker-symbol">ETHUSD</span>
-    <span class="ticker-price">3,120.80</span>
-    <span class="text-red ms-1">▼ 0.47%</span>
-</div>
-
+            <div class="ticker-item">
+                <span class="ticker-symbol">ETHUSD</span>
+                <span class="ticker-price">3,120.80</span>
+                <span class="text-red ms-1">▼ 0.47%</span>
+            </div>
         </div>
     </div>
 

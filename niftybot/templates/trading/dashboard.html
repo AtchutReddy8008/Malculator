@@ -328,7 +328,7 @@
                     <i class="fas fa-rupee-sign icon" style="color: var(--success);"></i>
                     <div class="value {% if daily_pnl and daily_pnl.pnl >= 0 %}profit{% elif daily_pnl %}loss{% else %}text-muted{% endif %}" id="today-pnl">
                         {% if daily_pnl %}
-                            ₹{{ daily_pnl.pnl|floatformat:2 }}
+                            {% if daily_pnl.pnl >= 0 %}+{% endif %}₹{{ daily_pnl.pnl|floatformat:2 }}
                         {% else %}
                             ₹0.00
                         {% endif %}
@@ -341,7 +341,7 @@
                 <div class="stat-card fade-in-up">
                     <i class="fas fa-calendar-week icon" style="color: var(--primary);"></i>
                     <div class="value {% if weekly_pnl >= 0 %}profit{% else %}loss{% endif %}" id="weekly-pnl">
-                        ₹{{ weekly_pnl|floatformat:2 }}
+                        {% if weekly_pnl >= 0 %}+{% endif %}₹{{ weekly_pnl|floatformat:2 }}
                     </div>
                     <div class="label">Weekly P&L</div>
                 </div>
@@ -351,7 +351,7 @@
                 <div class="stat-card fade-in-up">
                     <i class="fas fa-calendar-month icon" style="color: var(--primary);"></i>
                     <div class="value {% if monthly_pnl >= 0 %}profit{% else %}loss{% endif %}" id="monthly-pnl">
-                        ₹{{ monthly_pnl|floatformat:2 }}
+                        {% if monthly_pnl >= 0 %}+{% endif %}₹{{ monthly_pnl|floatformat:2 }}
                     </div>
                     <div class="label">Monthly P&L</div>
                 </div>
@@ -387,7 +387,7 @@
                                     <li class="mb-4">
                                         <strong>Current P&L:</strong> 
                                         <span id="current-pnl" class="{% if bot_status.current_unrealized_pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold ms-2">
-                                            ₹{{ bot_status.current_unrealized_pnl|floatformat:2|default:"0.00" }}
+                                            {% if bot_status.current_unrealized_pnl >= 0 %}+{% endif %}₹{{ bot_status.current_unrealized_pnl|floatformat:2|default:"0.00" }}
                                         </span>
                                     </li>
                                     <li class="mb-4">
@@ -435,25 +435,37 @@
                             <span>Monthly Trades</span>
                             <strong class="fs-5">{{ monthly_trades|default:"0" }}</strong>
                         </div>
+
                         <div class="d-flex justify-content-between mb-4">
                             <span>Best Day</span>
-                            <span class="profit fs-5">
-                                {% if performance.best_day %}
-                                    ₹{{ performance.best_day.pnl|floatformat:2 }}
-                                {% else %}
-                                    ₹0.00
-                                {% endif %}
-                            </span>
+                            <div class="text-end">
+                                <div id="best-day-pnl" class="fw-bold text-success">
+                                    {% if performance.best_day %}
+                                        {% if performance.best_day.pnl >= 0 %}+{% endif %}₹{{ performance.best_day.pnl|floatformat:2 }}
+                                    {% else %}
+                                        ₹0.00
+                                    {% endif %}
+                                </div>
+                                <small id="best-day-date">{{ performance.best_day.date|default:"No data" }}</small>
+                            </div>
                         </div>
+
                         <div class="d-flex justify-content-between mb-4">
-                            <span>Worst Day</span>
-                            <span class="loss fs-5">
-                                {% if performance.worst_day %}
-                                    ₹{{ performance.worst_day.pnl|floatformat:2 }}
-                                {% else %}
-                                    ₹0.00
-                                {% endif %}
-                            </span>
+                            <span>BAD Day</span>
+                            <div class="text-end">
+                                <div id="bad-day-pnl" class="fw-bold text-danger">
+                                    {% if performance.worst_day %}
+                                        {% if performance.worst_day.pnl >= 0 %}
+                                            +₹{{ performance.worst_day.pnl|floatformat:2 }}
+                                        {% else %}
+                                            ₹{{ performance.worst_day.pnl|floatformat:2 }}
+                                        {% endif %}
+                                    {% else %}
+                                        ₹0.00
+                                    {% endif %}
+                                </div>
+                                <small id="bad-day-date">{{ performance.worst_day.date|default:"No data" }}</small>
+                            </div>
                         </div>
 
                         <hr class="my-4">
@@ -516,7 +528,7 @@
                                                     {% endif %}
                                                 </td>
                                                 <td class="{% if trade.pnl >= 0 %}profit{% else %}loss{% endif %} fw-bold">
-                                                    ₹{{ trade.pnl|floatformat:2 }}
+                                                    {% if trade.pnl >= 0 %}+{% endif %}₹{{ trade.pnl|floatformat:2 }}
                                                 </td>
                                                 <td>
                                                     <span class="badge bg-{% if trade.status == 'EXECUTED' %}success{% elif trade.status == 'PENDING' %}warning{% else %}danger{% endif %}">
@@ -592,7 +604,11 @@ function refreshDashboard() {
         today: document.getElementById('today-pnl'),
         weekly: document.getElementById('weekly-pnl'),
         monthly: document.getElementById('monthly-pnl'),
-        heartbeat: document.getElementById('heartbeat-status')
+        heartbeat: document.getElementById('heartbeat-status'),
+        bestPnl: document.getElementById('best-day-pnl'),
+        bestDate: document.getElementById('best-day-date'),
+        badPnl: document.getElementById('bad-day-pnl'),
+        badDate: document.getElementById('bad-day-date')
     };
 
     fetch('{% url "dashboard_stats" %}', {
@@ -607,23 +623,16 @@ function refreshDashboard() {
         // Current P&L with animation
         if (elements.pnl) {
             const newPnl = data.current_unrealized_pnl.toFixed(2);
-            const oldPnl = elements.pnl.textContent.replace('₹', '').replace(',', '').trim();
+            const oldPnl = elements.pnl.textContent.replace('₹', '').replace(',', '').replace('+', '').trim();
 
             if (newPnl !== oldPnl) {
-                elements.pnl.textContent = `₹${parseFloat(newPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+                const sign = data.current_unrealized_pnl >= 0 ? '+' : '';
+                elements.pnl.textContent = `${sign}₹${parseFloat(newPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
                 elements.pnl.classList.add('number-change');
                 setTimeout(() => elements.pnl.classList.remove('number-change'), 1200);
 
-                // Update color
                 elements.pnl.className = `fw-bold ms-2 ${data.current_unrealized_pnl >= 0 ? 'profit' : 'loss'}`;
             }
-
-            // Show source in console for debug
-            console.log('PnL update:', {
-                value: newPnl,
-                source: data.pnl_source || 'unknown',
-                heartbeat: data.last_heartbeat_ago
-            });
         }
 
         // Heartbeat status
@@ -642,13 +651,14 @@ function refreshDashboard() {
                 : '<span class="text-danger">STOPPED</span>';
         }
 
-        // Aggregates (today, weekly, monthly)
+        // Aggregates (today, weekly, monthly) with sign
         ['today', 'weekly', 'monthly'].forEach(key => {
             const el = elements[key];
             if (el) {
                 const value = data[`${key}_pnl`].toFixed(2);
-                const oldVal = el.textContent.replace('₹', '').replace(',', '').trim();
-                el.textContent = `₹${parseFloat(value).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+                const oldVal = el.textContent.replace('₹', '').replace(',', '').replace('+', '').trim();
+                const sign = data[`${key}_pnl`] >= 0 ? '+' : '';
+                el.textContent = `${sign}₹${parseFloat(value).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
                 if (oldVal !== value) {
                     el.classList.add('number-change');
@@ -658,25 +668,45 @@ function refreshDashboard() {
                 el.className = `value ${data[`${key}_pnl`] >= 0 ? 'profit' : 'loss'}`;
             }
         });
+
+        // Best Day live update
+        if (data.best_day && elements.bestPnl) {
+            const val = data.best_day.pnl;
+            const sign = val >= 0 ? '+' : '';
+            elements.bestPnl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            elements.bestPnl.className = 'fw-bold text-success';
+        }
+        if (data.best_day && elements.bestDate) {
+            elements.bestDate.textContent = data.best_day.date || '—';
+        }
+
+        // BAD Day live update
+        if (data.worst_day && elements.badPnl) {
+            const val = data.worst_day.pnl;
+            const sign = val >= 0 ? '+' : '';
+            elements.badPnl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            elements.badPnl.className = 'fw-bold text-danger';
+        }
+        if (data.worst_day && elements.badDate) {
+            elements.badDate.textContent = data.worst_day.date || '—';
+        }
     })
     .catch(err => {
         console.warn('Dashboard stats fetch failed:', err);
-        // Silent fail - no user-facing error
     });
 }
 
-// Poll every 5 seconds when bot is running
+// Poll every 2 seconds when bot is running
 setInterval(() => {
     if (document.getElementById('bot-status-value')?.textContent.trim() === 'Running') {
         refreshDashboard();
     }
 }, 2000);
 
-// Initial fetch on load
+// Initial fetch + retry
 window.addEventListener('load', () => {
     refreshDashboard();
-    // Extra fetch after 3 seconds in case of slow load
-    setTimeout(refreshDashboard, 3000);
+    setTimeout(refreshDashboard, 2000);
 });
 </script>
 {% endblock %}

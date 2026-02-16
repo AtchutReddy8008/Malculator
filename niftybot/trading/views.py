@@ -65,6 +65,17 @@ def dashboard(request):
         broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
         broker_ready = broker and bool(broker.access_token)
 
+        # ─── ADDED: Performance stats for initial render ───
+        performance = {
+            'total_trades': Trade.objects.filter(user=request.user).count(),
+            'win_rate': calculate_win_rate(request.user),
+            'avg_daily_pnl': calculate_average_pnl(request.user),
+            'best_day': get_best_day(request.user),
+            'worst_day': get_worst_day(request.user),
+            'current_streak': get_current_streak(request.user, 'win'),
+            'current_loss_streak': get_current_streak(request.user, 'loss'),
+        }
+
         context = {
             'bot_status': bot_status,
             'recent_trades': recent_trades,
@@ -82,6 +93,7 @@ def dashboard(request):
             'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
             'current_margin': float(bot_status.current_margin or 0),
             'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
+            'performance': performance,  # ← THIS WAS MISSING — now added
         }
         return render(request, 'trading/dashboard.html', context)
 
@@ -112,6 +124,10 @@ def dashboard_stats(request):
         'daily_stop_loss': 0.0,
         'timestamp': now.isoformat(),
         'pnl_source': 'cached',  # 'cached', 'live_fallback', 'zero_fallback', 'error'
+
+        # ─── ADDED: Best Day & BAD Day for live updates ───
+        'best_day': None,
+        'worst_day': None,
     }
 
     if bot_status:
@@ -159,6 +175,22 @@ def dashboard_stats(request):
                     message=f"Live PnL fallback failed in dashboard_stats: {str(e)}",
                     details={'trace': traceback.format_exc()[:500]}
                 )
+
+    # ─── ADDED: Include best_day and worst_day in JSON response ───
+    best_day_record = get_best_day(user)
+    worst_day_record = get_worst_day(user)
+
+    if best_day_record:
+        data['best_day'] = {
+            'pnl': float(best_day_record.pnl),
+            'date': best_day_record.date.strftime('%d %b %Y') if best_day_record.date else None
+        }
+
+    if worst_day_record:
+        data['worst_day'] = {
+            'pnl': float(worst_day_record.pnl),
+            'date': worst_day_record.date.strftime('%d %b %Y') if worst_day_record.date else None
+        }
 
     return JsonResponse(data)
 
@@ -271,10 +303,9 @@ def pnl_calendar(request):
 
     # Use STRING keys to match template's day_date format
     pnl_by_date = {
-    str(rec.date): rec.pnl
-    for rec in daily_records
-}
-
+        str(rec.date): rec.pnl
+        for rec in daily_records
+    }
 
     # Override today's value if bot is running (also as string key)
     today_str = today.strftime("%Y-%m-%d")
