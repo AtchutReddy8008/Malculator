@@ -601,7 +601,7 @@
 
 <script>
 // ────────────────────────────────────────────────
-// REAL LIVE DASHBOARD - Always polling, reliable & fast
+// LIVE DASHBOARD - Optimized polling & smoother UX
 // ────────────────────────────────────────────────
 
 let isRefreshing = false;
@@ -616,7 +616,11 @@ function refreshDashboard(silent = false) {
     const heartbeatEl = document.getElementById('heartbeat-status');
     const lastUpdatedEl = document.getElementById('last-updated');
 
-    if (!silent && heartbeatEl) heartbeatEl.textContent = "Updating...";
+    // Show updating feedback (only when not silent)
+    if (!silent && heartbeatEl) {
+        heartbeatEl.textContent = "Updating...";
+        heartbeatEl.className = "ms-2 text-warning";
+    }
 
     fetch('{% url "dashboard_stats" %}', {
         method: 'GET',
@@ -627,7 +631,7 @@ function refreshDashboard(silent = false) {
         return response.json();
     })
     .then(data => {
-        // 1. Bot Status - update FIRST
+        // 1. Bot Status – update FIRST
         if (statusValueEl) {
             const isRunning = !!data.bot_running;
             statusValueEl.textContent = isRunning ? 'Running' : 'Stopped';
@@ -642,41 +646,51 @@ function refreshDashboard(silent = false) {
 
         // 2. Heartbeat
         if (heartbeatEl) {
-            heartbeatEl.textContent = data.last_heartbeat_ago || 'Never';
-            heartbeatEl.className = data.last_heartbeat_ago?.includes('min') ? 'text-success' : 'text-warning';
+            let hbText = data.last_heartbeat_ago || 'Never';
+            heartbeatEl.textContent = hbText;
+            
+            // Visual warning if heartbeat is stale (> 5 min)
+            if (hbText.includes('min') && parseInt(hbText) > 5) {
+                heartbeatEl.className = "ms-2 text-danger";
+                heartbeatEl.textContent = hbText + " (bot may be offline)";
+            } else if (hbText.includes('min')) {
+                heartbeatEl.className = "ms-2 text-success";
+            } else {
+                heartbeatEl.className = "ms-2 text-warning";
+            }
         }
 
-        // 3. Current P&L - fast & visible update
+        // 3. Current P&L
         const pnlEl = document.getElementById('current-pnl');
         if (pnlEl) {
             const newPnl = Number(data.current_unrealized_pnl || 0).toFixed(2);
             const oldPnl = pnlEl.textContent.replace(/[^0-9.-]/g, '').trim();
 
             if (newPnl !== oldPnl) {
-                const sign = data.current_unrealized_pnl >= 0 ? '+' : '';
-                pnlEl.textContent = `${sign}₹${Number(newPnl).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                const sign = Number(data.current_unrealized_pnl) >= 0 ? '+' : '';
+                pnlEl.textContent = `${sign}₹${Number(newPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
                 pnlEl.classList.add('number-change');
                 setTimeout(() => pnlEl.classList.remove('number-change'), 1200);
-
-                pnlEl.className = `fw-bold ms-2 ${data.current_unrealized_pnl >= 0 ? 'profit' : 'loss'}`;
+                pnlEl.className = `fw-bold ms-2 ${Number(data.current_unrealized_pnl) >= 0 ? 'profit' : 'loss'}`;
             }
         }
 
-        // 4. Today / Weekly / Monthly
+        // 4. Today / Weekly / Monthly PnL
         ['today', 'weekly', 'monthly'].forEach(key => {
             const el = document.getElementById(`${key}-pnl`);
             if (el && data[`${key}_pnl`] !== undefined) {
                 const val = Number(data[`${key}_pnl`]).toFixed(2);
                 const oldVal = el.textContent.replace(/[^0-9.-]/g, '').trim();
-                const sign = data[`${key}_pnl`] >= 0 ? '+' : '';
-                el.textContent = `${sign}₹${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                const sign = Number(data[`${key}_pnl`]) >= 0 ? '+' : '';
+
+                el.textContent = `${sign}₹${Number(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
                 if (oldVal !== val) {
                     el.classList.add('number-change');
                     setTimeout(() => el.classList.remove('number-change'), 1200);
                 }
 
-                el.className = `value ${data[`${key}_pnl`] >= 0 ? 'profit' : 'loss'}`;
+                el.className = `value ${Number(data[`${key}_pnl`]) >= 0 ? 'profit' : 'loss'}`;
             }
         });
 
@@ -685,8 +699,8 @@ function refreshDashboard(silent = false) {
         const bestDateEl = document.getElementById('best-day-date');
         if (data.best_day && bestPnlEl) {
             const val = Number(data.best_day.pnl).toFixed(2);
-            const sign = data.best_day.pnl >= 0 ? '+' : '';
-            bestPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+            const sign = Number(data.best_day.pnl) >= 0 ? '+' : '';
+            bestPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
         }
         if (data.best_day && bestDateEl) {
             bestDateEl.textContent = data.best_day.date || '—';
@@ -696,14 +710,14 @@ function refreshDashboard(silent = false) {
         const badDateEl = document.getElementById('bad-day-date');
         if (data.worst_day && badPnlEl) {
             const val = Number(data.worst_day.pnl).toFixed(2);
-            const sign = data.worst_day.pnl >= 0 ? '+' : '';
-            badPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+            const sign = Number(data.worst_day.pnl) >= 0 ? '+' : '';
+            badPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
         }
         if (data.worst_day && badDateEl) {
             badDateEl.textContent = data.worst_day.date || '—';
         }
 
-        // 6. Last updated time
+        // 6. Last updated
         lastUpdateTime = new Date();
         if (lastUpdatedEl) {
             lastUpdatedEl.textContent = `Last updated: ${lastUpdateTime.toLocaleTimeString('en-IN', {hour12: true})}`;
@@ -711,21 +725,24 @@ function refreshDashboard(silent = false) {
     })
     .catch(err => {
         console.warn('Dashboard refresh failed:', err);
-        if (heartbeatEl && !silent) heartbeatEl.textContent = 'Offline';
+        if (heartbeatEl && !silent) {
+            heartbeatEl.textContent = 'Offline';
+            heartbeatEl.className = "ms-2 text-danger";
+        }
     })
     .finally(() => {
         isRefreshing = false;
     });
 }
 
-// Poll every 3 seconds – always running (no conditions)
+// Poll every 2 seconds – smooth & reliable
 setInterval(() => refreshDashboard(), 2000);
 
-// Initial load + staggered quick fetches
+// Initial load with staggered fetches
 window.addEventListener('load', () => {
-    refreshDashboard(true);   // silent first fetch
-    setTimeout(() => refreshDashboard(), 2000);
-    setTimeout(() => refreshDashboard(), 1000);
+    refreshDashboard(true);    // silent first fetch
+    setTimeout(() => refreshDashboard(), 800);
+    setTimeout(() => refreshDashboard(), 1800);
 });
 </script>
 {% endblock %}
