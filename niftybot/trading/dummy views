@@ -1,3 +1,5 @@
+# trading/views.py
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
@@ -5,13 +7,16 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
-from django.db.models import Sum
+from django.db.models import Sum, Avg, Count, Max, Min, Q
 from django.utils import timezone
 from datetime import date, timedelta
 import json
 import traceback
+from calendar import monthcalendar
+from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.db import transaction
 
 # Celery
 from celery import current_app as celery_app
@@ -21,11 +26,14 @@ from .models import Broker, Trade, DailyPnL, BotStatus, LogEntry
 from .forms import SignUpForm, ZerodhaConnectionForm
 
 # Tasks
-from .tasks import run_user_bot
+from .tasks import run_user_bot, generate_zerodha_token_task
 
 # Auth helpers
 from .core.auth import generate_and_set_access_token_db
 from kiteconnect import KiteConnect
+
+# Import Engine for live PnL fallback (avoid circular import issues by importing inside function)
+# from .core.bot_original import Engine, DBLogger
 
 
 def home(request):
@@ -42,58 +50,180 @@ def home(request):
 
 @login_required
 def dashboard(request):
-    bot_status, _ = BotStatus.objects.get_or_create(user=request.user)
+    try:
+        bot_status, _ = BotStatus.objects.get_or_create(user=request.user)
 
-    recent_trades = Trade.objects.filter(user=request.user).order_by('-entry_time')[:10]
+        recent_trades = Trade.objects.filter(user=request.user).order_by('-entry_time')[:10]
 
-    today = date.today()
-    daily_pnl = DailyPnL.objects.filter(user=request.user, date=today).first()
+        stats = get_user_stats(request.user)
 
-    week_ago = today - timedelta(days=7)
-    weekly_agg = DailyPnL.objects.filter(
-        user=request.user,
-        date__gte=week_ago
-    ).aggregate(
-        total_pnl=Sum('pnl'),
-        total_trades=Sum('total_trades')
-    )
+        trades_qs = Trade.objects.filter(user=request.user, status='EXECUTED')
+        total_executed = trades_qs.count()
+        win_count = trades_qs.filter(pnl__gt=0).count()
+        win_rate = (win_count / total_executed * 100) if total_executed > 0 else 0
 
-    month_start = date(today.year, today.month, 1)
-    monthly_agg = DailyPnL.objects.filter(
-        user=request.user,
-        date__gte=month_start
-    ).aggregate(
-        total_pnl=Sum('pnl'),
-        total_trades=Sum('total_trades')
-    )
+        broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
+        broker_ready = broker and bool(broker.access_token)
 
-    trades_qs = Trade.objects.filter(user=request.user, status='EXECUTED')
-    total_executed = trades_qs.count()
-    win_count = trades_qs.filter(pnl__gt=0).count()
-    win_rate = (win_count / total_executed * 100) if total_executed > 0 else 0
+        # Performance stats for initial render
+        performance = {
+            'total_trades': Trade.objects.filter(user=request.user).count(),
+            'win_rate': calculate_win_rate(request.user),
+            'avg_daily_pnl': calculate_average_pnl(request.user),
+            'best_day': get_best_day(request.user),
+            'worst_day': get_worst_day(request.user),
+            'current_streak': get_current_streak(request.user, 'win'),
+            'current_loss_streak': get_current_streak(request.user, 'loss'),
+        }
 
-    broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
-    broker_ready = broker and bool(broker.access_token)
+        context = {
+            'bot_status': bot_status,
+            'recent_trades': recent_trades,
+            'daily_pnl': stats['daily_pnl'],
+            'weekly_pnl': stats['weekly_pnl'],
+            'weekly_trades': stats['weekly_trades'],
+            'monthly_pnl': stats['monthly_pnl'],
+            'monthly_trades': stats['monthly_trades'],
+            'win_rate': round(win_rate, 2),
+            'broker_ready': broker_ready,
+            'broker': broker,
+            'today': date.today(),
+            'daily_target': float(bot_status.daily_profit_target or 0),
+            'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
+            'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
+            'current_margin': float(bot_status.current_margin or 0),
+            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
+            'performance': performance,  # Added for Best Day / BAD Day display
+        }
+        return render(request, 'trading/dashboard.html', context)
 
-    context = {
-        'bot_status': bot_status,
-        'recent_trades': recent_trades,
-        'daily_pnl': daily_pnl,
-        'weekly_pnl': weekly_agg['total_pnl'] or 0,
-        'weekly_trades': weekly_agg['total_trades'] or 0,
-        'monthly_pnl': monthly_agg['total_pnl'] or 0,
-        'monthly_trades': monthly_agg['total_trades'] or 0,
-        'win_rate': round(win_rate, 2),
-        'broker_ready': broker_ready,
-        'broker': broker,
-        'today': today,
-        'daily_target': float(bot_status.daily_profit_target or 0),
-        'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
-        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
-        'current_margin': float(bot_status.current_margin or 0),
-        'max_lots_hard_cap': bot_status.max_lots_hard_cap,
+    except Exception as e:
+        messages.error(request, f"Error loading dashboard: {str(e)}")
+        LogEntry.objects.create(
+            user=request.user,
+            level='ERROR',
+            message=f"Dashboard view failed: {str(e)}",
+            details={'trace': traceback.format_exc()}
+        )
+        return render(request, 'trading/dashboard.html', {'error': str(e)})
+
+
+@login_required
+def dashboard_stats(request):
+    """JSON endpoint for live dashboard updates - with real-time fallback PnL calculation"""
+    user = request.user
+    bot_status = BotStatus.objects.filter(user=user).first()
+    now = timezone.now()
+
+    data = {
+        'bot_running': bot_status.is_running if bot_status else False,
+        'last_heartbeat_ago': "Never",
+        'current_unrealized_pnl': 0.0,
+        'current_margin': 0.0,
+        'daily_target': 0.0,
+        'daily_stop_loss': 0.0,
+        'timestamp': now.isoformat(),
+        'pnl_source': 'cached',
+
+        # Added: Best Day & BAD Day for live updates
+        'best_day': None,
+        'worst_day': None,
     }
-    return render(request, 'trading/dashboard.html', context)
+
+    if bot_status:
+        # Heartbeat age
+        if bot_status.last_heartbeat:
+            delta = now - bot_status.last_heartbeat
+            data['last_heartbeat_ago'] = f"{delta.total_seconds() // 60:.0f} min ago"
+
+        # Cached values
+        cached_pnl = float(bot_status.current_unrealized_pnl or 0)
+        data['current_unrealized_pnl'] = cached_pnl
+        data['current_margin'] = float(bot_status.current_margin or 0)
+        data['daily_target'] = float(bot_status.daily_profit_target or 0)
+        data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
+
+        # Live PnL fallback
+        if cached_pnl == 0 and bot_status.is_running:
+            try:
+                from .core.bot_original import Engine, DBLogger
+                
+                broker = Broker.objects.filter(user=user, broker_name='ZERODHA').first()
+                if not broker or not broker.access_token:
+                    raise Exception("No valid Zerodha broker found")
+
+                logger = DBLogger(user)
+                engine = Engine(user, broker, logger)
+                live_pnl = engine.algo_pnl()
+
+                if live_pnl != 0:
+                    data['current_unrealized_pnl'] = float(live_pnl)
+                    data['pnl_source'] = 'live_fallback'
+                    bot_status.current_unrealized_pnl = Decimal(str(live_pnl))
+                    bot_status.save(update_fields=['current_unrealized_pnl'])
+                else:
+                    data['pnl_source'] = 'zero_fallback'
+
+            except Exception as e:
+                data['pnl_source'] = 'error'
+                data['error_message'] = str(e)[:100]
+                LogEntry.objects.create(
+                    user=user,
+                    level='ERROR',
+                    message=f"Live PnL fallback failed in dashboard_stats: {str(e)}",
+                    details={'trace': traceback.format_exc()[:500]}
+                )
+
+    # Add best/worst day data
+    best_day_record = get_best_day(user)
+    worst_day_record = get_worst_day(user)
+
+    if best_day_record:
+        data['best_day'] = {
+            'pnl': float(best_day_record.pnl),
+            'date': best_day_record.date.strftime('%d %b %Y') if best_day_record.date else None
+        }
+
+    if worst_day_record:
+        data['worst_day'] = {
+            'pnl': float(worst_day_record.pnl),
+            'date': worst_day_record.date.strftime('%d %b %Y') if worst_day_record.date else None
+        }
+
+    # ─── ADDED: Daily & Monthly PnL for live updates ───
+    stats = get_user_stats(user)
+    data['daily_pnl'] = float(stats['daily_pnl'].pnl) if stats['daily_pnl'] else 0.0
+    data['monthly_pnl'] = float(stats['monthly_pnl'])
+
+    return JsonResponse(data)
+
+
+@login_required
+def debug_pnl(request):
+    """Temporary debug endpoint - remove after testing"""
+    bot_status = BotStatus.objects.filter(user=request.user).first()
+    if not bot_status or not bot_status.is_running:
+        return JsonResponse({'error': 'Bot not running or no BotStatus'})
+
+    try:
+        from .core.bot_original import Engine, DBLogger
+        broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
+        if not broker or not broker.access_token:
+            return JsonResponse({'error': 'No valid Zerodha broker'})
+
+        logger = DBLogger(request.user)
+        engine = Engine(request.user, broker, logger)
+        live_pnl = engine.algo_pnl()
+
+        return JsonResponse({
+            'live_calculated_pnl': round(live_pnl, 2),
+            'cached_pnl_in_db': float(bot_status.current_unrealized_pnl or 0),
+            'legs_count': len(engine.state.data.get('algo_legs', {})),
+            'last_heartbeat': bot_status.last_heartbeat.isoformat() if bot_status.last_heartbeat else None,
+            'bot_running': bot_status.is_running,
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @login_required
@@ -110,19 +240,14 @@ def broker_page(request):
             broker_obj.broker_name = 'ZERODHA'
             broker_obj.save()
 
-            success = generate_and_set_access_token_db(
-                kite=KiteConnect(api_key=broker_obj.api_key),
-                broker=broker_obj
-            )
-
-            if success:
-                messages.success(request, 'Zerodha credentials saved and access token generated successfully!')
-            else:
-                messages.warning(
+            if not broker or not broker.access_token:
+                generate_zerodha_token_task.delay(broker_obj.id)
+                messages.success(
                     request,
-                    'Credentials saved, but automatic token generation failed. '
-                    'Please check TOTP/clock sync or generate manually.'
+                    'Zerodha credentials saved. Token generation started in background...'
                 )
+            else:
+                messages.info(request, 'Zerodha credentials updated successfully.')
 
             return redirect('broker')
         else:
@@ -149,9 +274,14 @@ def pnl_calendar(request):
     try:
         year = int(year_str)
         month = int(month_str)
+        if not (1900 <= year <= 2100 and 1 <= month <= 12):
+            raise ValueError("Invalid date range")
     except ValueError:
         year = date.today().year
         month = date.today().month
+        messages.warning(request, "Invalid year/month parameter — showing current month.")
+
+    calendar_grid = monthcalendar(year, month)
 
     month_start = date(year, month, 1)
     if month == 12:
@@ -159,102 +289,170 @@ def pnl_calendar(request):
     else:
         month_end = date(year, month + 1, 1) - timedelta(days=1)
 
+    # Fetch historical DailyPnL records
     daily_records = DailyPnL.objects.filter(
         user=request.user,
         date__range=[month_start, month_end]
     ).order_by('date')
 
-    monthly_stats = {
-        'total_pnl': sum(r.pnl for r in daily_records) if daily_records else 0,
-        'average_pnl': sum(r.pnl for r in daily_records) / len(daily_records) if daily_records else 0,
-        'positive_days': sum(1 for r in daily_records if r.pnl > 0),
-        'negative_days': sum(1 for r in daily_records if r.pnl < 0),
-        'max_pnl': max((r.pnl for r in daily_records), default=0),
-        'min_pnl': min((r.pnl for r in daily_records), default=0),
+    # Get live data for today from BotStatus
+    today = date.today()
+    bot_status = BotStatus.objects.filter(user=request.user).first()
+    today_pnl = Decimal('0.00')
+    today_record_exists = daily_records.filter(date=today).exists()
+
+    if bot_status and bot_status.current_unrealized_pnl is not None:
+        today_pnl = bot_status.current_unrealized_pnl
+
+    # Use STRING keys to match template's day_date format
+    pnl_by_date = {
+        str(rec.date): rec.pnl
+        for rec in daily_records
     }
+
+    # Override today's value if bot is running (also as string key)
+    today_str = today.strftime("%Y-%m-%d")
+    if bot_status and bot_status.is_running:
+        pnl_by_date[today_str] = today_pnl
+
+    # Monthly stats with fallback
+    monthly_stats = daily_records.aggregate(
+        total_pnl=Sum('pnl'),
+        average_pnl=Avg('pnl'),
+        positive_days=Count('id', filter=Q(pnl__gt=0)),
+        negative_days=Count('id', filter=Q(pnl__lt=0)),
+        max_pnl=Max('pnl'),
+        min_pnl=Min('pnl'),
+    ) or {
+        'total_pnl': Decimal('0.00'), 'average_pnl': Decimal('0.00'),
+        'positive_days': 0, 'negative_days': 0,
+        'max_pnl': Decimal('0.00'), 'min_pnl': Decimal('0.00')
+    }
+
+    # Convert None → 0
+    for key in monthly_stats:
+        if monthly_stats[key] is None:
+            monthly_stats[key] = Decimal('0.00') if 'pnl' in key else 0
 
     context = {
         'year': year,
         'month': month,
         'month_name': date(year, month, 1).strftime('%B'),
+        'calendar': calendar_grid,
         'daily_records': daily_records,
+        'pnl_by_date': pnl_by_date,
+        'today_live_pnl': today_pnl,
+        'today_record_exists': today_record_exists,
         'stats': monthly_stats,
         'prev_month': month - 1 if month > 1 else 12,
         'prev_year': year if month > 1 else year - 1,
         'next_month': month + 1 if month < 12 else 1,
         'next_year': year if month < 12 else year + 1,
+        'today_str': today.strftime('%Y-%m-%d'),
+        'current_month_str': date(year, month, 1).strftime('%B %Y'),
+        'bot_running': bot_status.is_running if bot_status else False,
     }
+
     return render(request, 'trading/pnl_calendar.html', context)
 
 
 @login_required
 def algorithms_page(request):
-    bot_status, _ = BotStatus.objects.get_or_create(user=request.user)
+    try:
+        bot_status, _ = BotStatus.objects.get_or_create(user=request.user)
 
-    algorithm_details = {
-        'name': 'Hedged Short Strangle',
-        'version': 'v9.8.3-fixed-v5',
-        'description': 'NIFTY Weekly Options Trading Strategy',
-        'underlying': 'NIFTY 50',
-        'lot_size': 65,
-        'entry_window': '09:20:00 - 09:23:30 IST',
-        'exit_time': '15:00:00 IST',
-        'max_lots': 50,
-        'strategy_type': 'Options Selling with Hedges',
-        'risk_level': 'Medium',
-        'expected_returns': '1-2% per week',
-        'max_drawdown': '10-15%',
+        algorithm_details = {
+            'name': 'Hedged Short Strangle',
+            'version': 'v9.8.3-fixed-v5',
+            'description': 'NIFTY Weekly Options Trading Strategy',
+            'underlying': 'NIFTY 50',
+            'lot_size': 65,
+            'entry_window': '09:21:00 - 09:26:00 IST',
+            'exit_time': '15:00:00 IST',
+            'max_lots': 50,
+            'strategy_type': 'Options Selling with Hedges',
+            'risk_level': 'Medium',
+            'expected_returns': '1-2% per week',
+            'max_drawdown': '10-15%',
+        }
+
+        strategy_rules = [
+            'No trading on Tuesdays (optional)',
+            'No trading on expiry day',
+            'Entry only in widened window 9:21–9:26',
+            'VIX advisory range 6–35',
+            'Daily target: 2% of margin',
+            'Stop loss: Equal to daily target',
+            'Defensive adjustments at 50 points from short strike',
+            'Max 1 adjustment per side per day',
+            'Auto-exit at 3:00 PM',
+        ]
+
+        recent_logs = LogEntry.objects.filter(
+            user=request.user,
+            level__in=['INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        ).order_by('-timestamp')[:20]
+
+        performance_stats = {
+            'total_trades': Trade.objects.filter(user=request.user).count(),
+            'win_rate': calculate_win_rate(request.user),
+            'avg_daily_pnl': calculate_average_pnl(request.user),
+            'best_day': get_best_day(request.user),
+            'worst_day': get_worst_day(request.user),
+            'current_streak': get_current_streak(request.user, 'win'),
+            'current_loss_streak': get_current_streak(request.user, 'loss'),
+        }
+
+        broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
+        broker_ready = broker and bool(broker.access_token)
+
+        context = {
+            'bot_status': bot_status,
+            'algorithm': algorithm_details,
+            'strategy_rules': strategy_rules,
+            'recent_logs': recent_logs,
+            'performance': performance_stats,
+            'daily_target': float(bot_status.daily_profit_target or 0),
+            'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
+            'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
+            'current_margin': float(bot_status.current_margin or 0),
+            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
+            'broker_ready': broker_ready,
+            'broker': broker,
+            'can_control_bot': request.user.is_staff,
+        }
+
+        return render(request, 'trading/algorithms.html', context)
+
+    except Exception as e:
+        messages.error(request, f"Error loading algorithms page: {str(e)}")
+        LogEntry.objects.create(
+            user=request.user,
+            level='ERROR',
+            message=f"Algorithms page failed: {str(e)}",
+            details={'trace': traceback.format_exc()}
+        )
+        return render(request, 'trading/algorithms.html', {'error': str(e)})
+
+
+# ───────────────────────────────────────────────
+# Helper Functions
+# ───────────────────────────────────────────────
+
+def get_user_stats(user):
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_start = date(today.year, today.month, 1)
+
+    return {
+        'daily_pnl': DailyPnL.objects.filter(user=user, date=today).first(),
+        'weekly_pnl': DailyPnL.objects.filter(user=user, date__gte=week_ago).aggregate(total=Sum('pnl'))['total'] or 0,
+        'monthly_pnl': DailyPnL.objects.filter(user=user, date__gte=month_start).aggregate(total=Sum('pnl'))['total'] or 0,
+        'weekly_trades': Trade.objects.filter(user=user, entry_time__date__gte=week_ago, status='EXECUTED').count(),
+        'monthly_trades': Trade.objects.filter(user=user, entry_time__date__gte=month_start, status='EXECUTED').count(),
     }
 
-    strategy_rules = [
-        'No trading on Tuesdays (optional)',
-        'No trading on expiry day',
-        'Entry only in widened window 9:20–9:23:30',
-        'VIX must be between 9-22 for entry',
-        'Daily target: 2% of margin',
-        'Stop loss: Equal to daily target',
-        'Defensive adjustments at 50 points from short strike',
-        'Max 1 adjustment per side per day',
-        'Auto-exit at 3:00 PM',
-    ]
 
-    recent_logs = LogEntry.objects.filter(
-        user=request.user,
-        level__in=['INFO', 'WARNING', 'ERROR', 'CRITICAL']
-    ).order_by('-timestamp')[:20]
-
-    performance_stats = {
-        'total_trades': Trade.objects.filter(user=request.user).count(),
-        'win_rate': calculate_win_rate(request.user),
-        'avg_daily_pnl': calculate_average_pnl(request.user),
-        'best_day': get_best_day(request.user),
-        'worst_day': get_worst_day(request.user),
-        'current_streak': get_current_streak(request.user),
-    }
-
-    broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
-    broker_ready = broker and bool(broker.access_token)
-
-    context = {
-        'bot_status': bot_status,
-        'algorithm': algorithm_details,
-        'strategy_rules': strategy_rules,
-        'recent_logs': recent_logs,
-        'performance': performance_stats,
-        'daily_target': float(bot_status.daily_profit_target or 0),
-        'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
-        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
-        'current_margin': float(bot_status.current_margin or 0),
-        'max_lots_hard_cap': bot_status.max_lots_hard_cap,
-        'broker_ready': broker_ready,
-        'broker': broker,
-        'can_control_bot': request.user.is_staff,
-    }
-
-    return render(request, 'trading/algorithms.html', context)
-
-
-# Helper functions
 def calculate_win_rate(user):
     qs = Trade.objects.filter(user=user, status='EXECUTED')
     total = qs.count()
@@ -270,7 +468,7 @@ def calculate_average_pnl(user):
     if count == 0:
         return 0.0
     total = qs.aggregate(total=Sum('pnl'))['total'] or 0
-    return round(total / count, 2)
+    return round(float(total) / count, 2)
 
 
 def get_best_day(user):
@@ -281,12 +479,16 @@ def get_worst_day(user):
     return DailyPnL.objects.filter(user=user).order_by('pnl').first()
 
 
-def get_current_streak(user):
+def get_current_streak(user, streak_type='win'):
     streak = 0
     current = date.today()
+    sign = 1 if streak_type == 'win' else -1
+
     while True:
         record = DailyPnL.objects.filter(user=user, date=current).first()
-        if record and record.pnl > 0:
+        if not record or record.pnl == 0:
+            break
+        if (record.pnl * sign) > 0:
             streak += 1
             current -= timedelta(days=1)
         else:
@@ -298,14 +500,10 @@ def get_current_streak(user):
 @require_POST
 @csrf_protect
 def start_bot(request):
-    if not request.user.is_staff:
-        messages.error(request, "Only staff users are allowed to run algorithms.")
-        return redirect('dashboard')
-
     user = request.user
-    bot_status = BotStatus.objects.filter(user=user).first()
+    bot_status, _ = BotStatus.objects.get_or_create(user=user)
 
-    if bot_status and bot_status.is_running:
+    if bot_status.is_running:
         messages.warning(request, 'Bot is already running. No new task launched.')
         return redirect('dashboard')
 
@@ -315,14 +513,21 @@ def start_bot(request):
         return redirect('broker')
 
     try:
-        result = run_user_bot.delay(user.id)
+        with transaction.atomic():
+            bot_status.refresh_from_db()
+            if bot_status.is_running:
+                messages.warning(request, 'Bot already running (race condition prevented).')
+                return redirect('dashboard')
 
-        bot_status, _ = BotStatus.objects.get_or_create(user=user)
-        bot_status.is_running = True
-        bot_status.celery_task_id = result.id
-        bot_status.last_started = timezone.now()
-        bot_status.last_error = None
-        bot_status.save(update_fields=['is_running', 'celery_task_id', 'last_started', 'last_error'])
+            result = run_user_bot.delay(user.id)
+
+            bot_status.is_running = True
+            bot_status.celery_task_id = result.id
+            bot_status.last_started = timezone.now()
+            bot_status.last_error = None
+            bot_status.save(update_fields=[
+                'is_running', 'celery_task_id', 'last_started', 'last_error'
+            ])
 
         LogEntry.objects.create(
             user=user,
@@ -333,19 +538,18 @@ def start_bot(request):
 
         messages.success(
             request,
-            f'Bot started successfully! Task ID: {result.id[:8]}... '
-            '(refresh in 10–30 seconds for live status)'
+            f'Bot started successfully! Task ID: {result.id[:8]}... (refresh in 10–30s)'
         )
     except Exception as e:
         error_msg = f'Failed to start bot: {str(e)}'
-        if bot_status:
-            bot_status.last_error = error_msg[:500]
-            bot_status.save(update_fields=['last_error'])
+        bot_status.last_error = error_msg[:500]
+        bot_status.save(update_fields=['last_error'])
+
         LogEntry.objects.create(
             user=user,
             level='ERROR',
             message=error_msg,
-            details={'action': 'start_bot_failed'}
+            details={'action': 'start_bot_failed', 'trace': traceback.format_exc()}
         )
         messages.error(request, error_msg)
 
@@ -356,10 +560,6 @@ def start_bot(request):
 @require_POST
 @csrf_protect
 def stop_bot(request):
-    if not request.user.is_staff:
-        messages.error(request, "Only staff users are allowed to control the bot.")
-        return redirect('dashboard')
-
     user = request.user
     bot_status = get_object_or_404(BotStatus, user=user)
 
@@ -385,10 +585,12 @@ def stop_bot(request):
             )
             messages.warning(request, 'Could not revoke task cleanly (still stopping via flag).')
 
-    bot_status.is_running = False
-    bot_status.celery_task_id = None
-    bot_status.last_stopped = timezone.now()
-    bot_status.save(update_fields=['is_running', 'celery_task_id', 'last_stopped'])
+    with transaction.atomic():
+        bot_status.refresh_from_db()
+        bot_status.is_running = False
+        bot_status.celery_task_id = None
+        bot_status.last_stopped = timezone.now()
+        bot_status.save(update_fields=['is_running', 'celery_task_id', 'last_stopped'])
 
     LogEntry.objects.create(
         user=user,
@@ -403,30 +605,31 @@ def stop_bot(request):
 
 @login_required
 def bot_status(request):
-    bot_status = get_object_or_404(BotStatus, user=request.user)
+    bot_status = BotStatus.objects.filter(user=request.user).first()
     now = timezone.now()
 
     heartbeat_ago = "Never"
-    is_actually_alive = bot_status.is_running
+    is_actually_alive = False
 
-    if hasattr(bot_status, 'last_heartbeat') and bot_status.last_heartbeat:
-        delta = now - bot_status.last_heartbeat
-        heartbeat_ago = f"{delta.total_seconds() // 60:.0f} min ago"
-        is_actually_alive = bot_status.is_running and delta < timedelta(minutes=5)
+    if bot_status:
+        if bot_status.last_heartbeat:
+            delta = now - bot_status.last_heartbeat
+            heartbeat_ago = f"{delta.total_seconds() // 60:.0f} min ago"
+            is_actually_alive = bot_status.is_running and delta < timedelta(minutes=5)
 
     return JsonResponse({
         'is_running': is_actually_alive,
-        'flag_set': bot_status.is_running,
+        'flag_set': bot_status.is_running if bot_status else False,
         'last_heartbeat_ago': heartbeat_ago,
-        'last_started': bot_status.last_started.isoformat() if bot_status.last_started else None,
-        'last_stopped': bot_status.last_stopped.isoformat() if bot_status.last_stopped else None,
-        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
-        'current_margin': float(bot_status.current_margin or 0),
-        'daily_target': float(bot_status.daily_profit_target or 0),
-        'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
-        'max_lots_hard_cap': bot_status.max_lots_hard_cap,
-        'task_id': bot_status.celery_task_id or 'None',
-        'last_error': bot_status.last_error or 'None'
+        'last_started': bot_status.last_started.isoformat() if bot_status and bot_status.last_started else None,
+        'last_stopped': bot_status.last_stopped.isoformat() if bot_status and bot_status.last_stopped else None,
+        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0) if bot_status else 0.0,
+        'current_margin': float(bot_status.current_margin or 0) if bot_status else 0.0,
+        'daily_target': float(bot_status.daily_profit_target or 0) if bot_status else 0.0,
+        'daily_stop_loss': float(bot_status.daily_stop_loss or 0) if bot_status else 0.0,
+        'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0 if bot_status else 0,
+        'task_id': bot_status.celery_task_id or 'None' if bot_status else 'None',
+        'last_error': bot_status.last_error or 'None' if bot_status else 'None'
     })
 
 
@@ -434,15 +637,16 @@ def bot_status(request):
 @require_POST
 @csrf_protect
 def update_max_lots(request):
-    if not request.user.is_staff:
-        return JsonResponse({'success': False, 'error': 'Only staff users can update max lots.'}, status=403)
-
     try:
         data = json.loads(request.body)
-        new_cap = int(data.get('max_lots_hard_cap', 0))
+        max_lots_str = data.get('max_lots_hard_cap')
 
-        if not 1 <= new_cap <= 10:
-            return JsonResponse({'success': False, 'error': 'Value must be between 1 and 10'})
+        try:
+            new_cap = int(max_lots_str)
+            if not 1 <= new_cap <= 10:
+                return JsonResponse({'success': False, 'error': 'Value must be between 1 and 10'}, status=400)
+        except (ValueError, TypeError):
+            return JsonResponse({'success': False, 'error': 'Invalid number format'}, status=400)
 
         bot_status = BotStatus.objects.get(user=request.user)
         old_cap = bot_status.max_lots_hard_cap
@@ -458,7 +662,7 @@ def update_max_lots(request):
 
         return JsonResponse({'success': True, 'new_value': new_cap})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
 
 def signup(request):
@@ -466,6 +670,7 @@ def signup(request):
         form = SignUpForm(request.POST)
         if form.is_valid():
             user = form.save()
+            BotStatus.objects.get_or_create(user=user)
             login(request, user)
             messages.success(request, 'Account created successfully! Welcome.')
             return redirect('dashboard')
@@ -483,28 +688,12 @@ def user_logout(request):
     return redirect('home')
 
 
-@login_required
-def connect_zerodha(request):
-    broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
-
-    if broker and broker.access_token:
-        messages.info(request, "Zerodha is already connected!")
-        return redirect('broker')
-
-    messages.info(request, "Please fill in your Zerodha credentials on the Broker page.")
-    return redirect('broker')
-
-
 # ───────────────────────────────────────────────
-# NEW VIEWS FOR STRATEGIES SECTION (added for client request)
+# STRATEGIES SECTION VIEWS
 # ───────────────────────────────────────────────
 
 @login_required
 def strategies_list(request):
-    """
-    New page: Shows 4 strategy cards
-    Short Strangle is active, others are coming soon
-    """
     context = {
         'strategies': [
             {
@@ -545,17 +734,24 @@ def strategies_list(request):
 
 
 @login_required
+def about_us(request):
+    return render(request, 'trading/about.html')
+
+
+@login_required
 def coming_soon_placeholder(request):
-    """
-    Simple placeholder page for future strategies
-    Shows a nice "Coming Soon" message with back button
-    """
-    # Get the strategy name from URL name for dynamic title
     strategy_name = request.resolver_match.url_name.replace('_detail', '').replace('-', ' ').title()
     
     context = {
         'title': strategy_name,
         'description': "This powerful strategy is currently under active development. We're working hard to bring it to you soon!",
-        'expected': "Expected release: 2026"
+        'expected': "Expected release: Q3 2026"
     }
     return render(request, 'trading/coming_soon.html', context)
+
+
+@login_required
+def connect_zerodha(request):
+    """Temporary redirect from old /connect-zerodha/ URL to the current broker page"""
+    messages.info(request, "Zerodha connection is now managed on the Broker page.")
+    return redirect('broker')

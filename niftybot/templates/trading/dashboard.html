@@ -601,7 +601,7 @@
 
 <script>
 // ────────────────────────────────────────────────
-// LIVE DASHBOARD - Optimized polling & smoother UX
+// LIVE DASHBOARD - Enhanced Heartbeat + All PnL Live
 // ────────────────────────────────────────────────
 
 let isRefreshing = false;
@@ -616,7 +616,6 @@ function refreshDashboard(silent = false) {
     const heartbeatEl = document.getElementById('heartbeat-status');
     const lastUpdatedEl = document.getElementById('last-updated');
 
-    // Show updating feedback (only when not silent)
     if (!silent && heartbeatEl) {
         heartbeatEl.textContent = "Updating...";
         heartbeatEl.className = "ms-2 text-warning";
@@ -631,7 +630,7 @@ function refreshDashboard(silent = false) {
         return response.json();
     })
     .then(data => {
-        // 1. Bot Status – update FIRST
+        // 1. Bot Status
         if (statusValueEl) {
             const isRunning = !!data.bot_running;
             statusValueEl.textContent = isRunning ? 'Running' : 'Stopped';
@@ -644,20 +643,38 @@ function refreshDashboard(silent = false) {
                 : '<span class="text-danger">STOPPED</span>';
         }
 
-        // 2. Heartbeat
+        // 2. Heartbeat - SMART & USER-FRIENDLY DISPLAY
         if (heartbeatEl) {
             let hbText = data.last_heartbeat_ago || 'Never';
-            heartbeatEl.textContent = hbText;
-            
-            // Visual warning if heartbeat is stale (> 5 min)
-            if (hbText.includes('min') && parseInt(hbText) > 5) {
-                heartbeatEl.className = "ms-2 text-danger";
-                heartbeatEl.textContent = hbText + " (bot may be offline)";
-            } else if (hbText.includes('min')) {
-                heartbeatEl.className = "ms-2 text-success";
+            let displayText = hbText;
+            let className = "ms-2";
+
+            if (hbText === 'Never') {
+                displayText = "Never — bot hasn't started";
+                className += " text-danger";
+            } 
+            else if (hbText.includes('min')) {
+                const minutes = parseInt(hbText, 10) || 0;
+                if (minutes <= 3) {
+                    displayText = "Just now (alive)";
+                    className += " text-success fw-bold";
+                } else if (minutes <= 10) {
+                    displayText = hbText + " (recent)";
+                    className += " text-success";
+                } else if (minutes <= 30) {
+                    displayText = hbText + " (possibly idle)";
+                    className += " text-warning";
+                } else {
+                    displayText = "Offline — last seen " + hbText + " ago";
+                    className += " text-danger fw-bold";
+                }
             } else {
-                heartbeatEl.className = "ms-2 text-warning";
+                displayText = hbText + " (unknown)";
+                className += " text-warning";
             }
+
+            heartbeatEl.textContent = displayText;
+            heartbeatEl.className = className;
         }
 
         // 3. Current P&L
@@ -675,13 +692,21 @@ function refreshDashboard(silent = false) {
             }
         }
 
-        // 4. Today / Weekly / Monthly PnL
-        ['today', 'weekly', 'monthly'].forEach(key => {
+        // 4. Daily / Weekly / Monthly PnL
+        const pnlKeys = {
+            'today': 'daily_pnl',
+            'weekly': 'weekly_pnl',
+            'monthly': 'monthly_pnl'
+        };
+
+        Object.keys(pnlKeys).forEach(key => {
             const el = document.getElementById(`${key}-pnl`);
-            if (el && data[`${key}_pnl`] !== undefined) {
-                const val = Number(data[`${key}_pnl`]).toFixed(2);
+            const serverKey = pnlKeys[key];
+
+            if (el && data[serverKey] !== undefined) {
+                const val = Number(data[serverKey]).toFixed(2);
                 const oldVal = el.textContent.replace(/[^0-9.-]/g, '').trim();
-                const sign = Number(data[`${key}_pnl`]) >= 0 ? '+' : '';
+                const sign = Number(data[serverKey]) >= 0 ? '+' : '';
 
                 el.textContent = `${sign}₹${Number(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
@@ -690,7 +715,7 @@ function refreshDashboard(silent = false) {
                     setTimeout(() => el.classList.remove('number-change'), 1200);
                 }
 
-                el.className = `value ${Number(data[`${key}_pnl`]) >= 0 ? 'profit' : 'loss'}`;
+                el.className = `value ${Number(data[serverKey]) >= 0 ? 'profit' : 'loss'}`;
             }
         });
 
@@ -735,12 +760,12 @@ function refreshDashboard(silent = false) {
     });
 }
 
-// Poll every 2 seconds – smooth & reliable
+// Poll every 2 seconds
 setInterval(() => refreshDashboard(), 2000);
 
-// Initial load with staggered fetches
+// Initial staggered fetches
 window.addEventListener('load', () => {
-    refreshDashboard(true);    // silent first fetch
+    refreshDashboard(true);
     setTimeout(() => refreshDashboard(), 800);
     setTimeout(() => refreshDashboard(), 1800);
 });
