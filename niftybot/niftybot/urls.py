@@ -1,3 +1,5 @@
+# niftybot/urls.py
+
 from django.contrib import admin
 from django.urls import path
 from django.contrib.auth import views as auth_views
@@ -19,7 +21,7 @@ urlpatterns = [
     # Main App Pages (login required - enforced in views)
     # ───────────────────────────────────────────────
     path('dashboard/', views.dashboard, name='dashboard'),
-    path('broker/', views.broker_page, name='broker'),
+    path('broker/', views.broker_page, name='broker'),                  # ← Fixed: uses broker_page (existing function)
     path('pnl-calendar/', views.pnl_calendar, name='pnl_calendar'),
 
     # Bot control endpoints (POST only, CSRF protected in views)

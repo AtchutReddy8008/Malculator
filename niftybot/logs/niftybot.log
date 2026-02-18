@@ -4902,3 +4902,9 @@ INFO 2026-02-18 13:09:07,658 auth [AUTH] Request token extracted successfully (l
 INFO 2026-02-18 13:09:07,830 auth [AUTH SUCCESS] Access token generated & saved (prefix: DHCDkR...)
 WARNING 2026-02-18 14:46:36,593 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
 WARNING 2026-02-18 16:45:29,643 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 18:04:33,278 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 18:23:14,725 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 18:45:30,571 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 18:53:21,353 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 19:07:09,699 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-18 19:16:55,123 tasks [SIGNAL] Received signal 2 — exiting worker gracefully

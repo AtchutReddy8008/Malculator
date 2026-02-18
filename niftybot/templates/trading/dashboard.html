@@ -104,7 +104,7 @@
         line-height: 1;
         margin-bottom: 0.5rem;
         transition: all 0.4s ease;
-        min-height: 3.2rem; /* prevent layout shift */
+        min-height: 3.2rem; /* prevent layout shift when "Calculating..." */
     }
 
     .stat-card .label {
@@ -292,6 +292,7 @@
 
     .win-rate-good { color: var(--success) !important; text-shadow: var(--glow-success); }
     .win-rate-bad  { color: var(--danger)   !important; text-shadow: var(--glow-danger); }
+    .win-rate-none { color: var(--text-muted) !important; font-style: italic; }
 </style>
 {% endblock %}
 
@@ -438,23 +439,16 @@
                         <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Overview</h5>
                     </div>
                     <div class="card-body">
-                        <div class="d-flex justify-content-between mb-4 align-items-center">
-                            <span>Daily Win Rate</span>
-                            <strong id="daily-win-rate-display" class="fs-4 fw-bold calculating">
-                                Calculating...
-                            </strong>
-                        </div>
-
-                        <div class="d-flex justify-content-between mb-4 align-items-center">
-                            <span>Weekly Win Rate</span>
-                            <strong id="weekly-win-rate-display" class="fs-4 fw-bold calculating">
+                        <div class="d-flex justify-content-between mb-5 align-items-center">
+                            <span class="fs-5">Win Rate</span>
+                            <strong id="daily-win-rate-display" class="fs-3 fw-bold calculating">
                                 Calculating...
                             </strong>
                         </div>
 
                         <div class="d-flex justify-content-between mb-4">
-                            <span>Weekly Trades</span>
-                            <strong class="fs-5">{{ weekly_trades|default:"0" }}</strong>
+                            <span>Total Trades (All Time)</span>
+                            <strong class="fs-5">{{ performance.total_trades|default:"0" }}</strong>
                         </div>
 
                         <div class="d-flex justify-content-between mb-4">
@@ -617,7 +611,7 @@
 
 <script>
 // ────────────────────────────────────────────────
-// LIVE DASHBOARD - Enhanced Heartbeat + PnL + Win Rate
+// LIVE DASHBOARD - Heartbeat + PnL + Overall Day Win Rate
 // ────────────────────────────────────────────────
 
 let isRefreshing = false;
@@ -632,7 +626,6 @@ function refreshDashboard(silent = false) {
     const heartbeatEl       = document.getElementById('heartbeat-status');
     const lastUpdatedEl     = document.getElementById('last-updated');
     const dailyWinEl        = document.getElementById('daily-win-rate-display');
-    const weeklyWinEl       = document.getElementById('weekly-win-rate-display');
 
     if (!silent && heartbeatEl) {
         heartbeatEl.textContent = "Updating...";
@@ -736,31 +729,20 @@ function refreshDashboard(silent = false) {
             }
         });
 
-        // 5. Daily Win Rate
-        if (dailyWinEl && data.daily_win_rate !== undefined) {
-            const rate = Number(data.daily_win_rate).toFixed(2);
+        // 5. Overall Day Win Rate (profitable days %)
+        if (dailyWinEl && data.overall_day_win_rate !== undefined) {
+            const rate = Number(data.overall_day_win_rate).toFixed(2);
+
             dailyWinEl.textContent = rate + '%';
-            dailyWinEl.className = Number(data.daily_win_rate) >= 50 
-                ? 'fs-4 fw-bold win-rate-good' 
-                : 'fs-4 fw-bold win-rate-bad';
+            dailyWinEl.className = Number(data.overall_day_win_rate) >= 50 
+                ? 'fs-3 fw-bold win-rate-good' 
+                : 'fs-3 fw-bold win-rate-bad';
         } else if (dailyWinEl) {
             dailyWinEl.textContent = '—';
-            dailyWinEl.className = 'fs-4 fw-bold text-muted';
+            dailyWinEl.className = 'fs-3 fw-bold text-muted';
         }
 
-        // 6. Weekly Win Rate
-        if (weeklyWinEl && data.weekly_win_rate !== undefined) {
-            const rate = Number(data.weekly_win_rate).toFixed(2);
-            weeklyWinEl.textContent = rate + '%';
-            weeklyWinEl.className = Number(data.weekly_win_rate) >= 50 
-                ? 'fs-4 fw-bold win-rate-good' 
-                : 'fs-4 fw-bold win-rate-bad';
-        } else if (weeklyWinEl) {
-            weeklyWinEl.textContent = '—';
-            weeklyWinEl.className = 'fs-4 fw-bold text-muted';
-        }
-
-        // 7. Best Day & Worst Day
+        // 6. Best Day & Worst Day
         const bestPnlEl = document.getElementById('best-day-pnl');
         const bestDateEl = document.getElementById('best-day-date');
         if (data.best_day && bestPnlEl) {
@@ -783,7 +765,7 @@ function refreshDashboard(silent = false) {
             worstDateEl.textContent = data.worst_day.date || '—';
         }
 
-        // 8. Last updated
+        // 7. Last updated
         lastUpdateTime = new Date();
         if (lastUpdatedEl) {
             lastUpdatedEl.textContent = `Last updated: ${lastUpdateTime.toLocaleTimeString('en-IN', {hour12: true})}`;

@@ -48,6 +48,35 @@ print(Trade.objects.filter(user=user, status='CLOSED', exit_time__date=date.toda
 
 # See today's DailyPnL
 print(DailyPnL.objects.filter(user=user, date=date.today()).values('pnl', 'total_trades'))
+-----------------------------------------------------------------------------------------------
+from trading.views import calculate_overall_day_win_rate
+from django.contrib.auth.models import User
+
+u = User.objects.get(username="balaji")
+print(calculate_overall_day_win_rate(u))
+
+------------------------------------------------------------------------------------------------
+from trading.models import DailyPnL, Trade
+from django.contrib.auth.models import User
+from datetime import date
+from decimal import Decimal
+
+u = User.objects.get(username="balaji")
+today = date.today()
+
+# Get or create today's record
+daily, created = DailyPnL.objects.get_or_create(user=u, date=today)
+
+# Simulate: 4 trades, 3 wins → 75%
+daily.total_trades = 4
+daily.win_trades = 3
+daily.pnl = Decimal('285.50')  # example positive PnL
+daily.save()
+
+print("Today's record updated:")
+print(f"  total_trades: {daily.total_trades}")
+print(f"  win_trades:   {daily.win_trades}")
+print(f"  win_rate:     {round((daily.win_trades / daily.total_trades) * 100, 2)}%")s
 
 
 -------------------------------------------------------------------------
