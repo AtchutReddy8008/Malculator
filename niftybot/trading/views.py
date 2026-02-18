@@ -57,10 +57,12 @@ def dashboard(request):
 
         stats = get_user_stats(request.user)
 
-        trades_qs = Trade.objects.filter(user=request.user, status='EXECUTED')
-        total_executed = trades_qs.count()
-        win_count = trades_qs.filter(pnl__gt=0).count()
-        win_rate = (win_count / total_executed * 100) if total_executed > 0 else 0
+        # ─── IMPROVED: Use DailyPnL for win rate when possible ───
+        today_pnl = DailyPnL.objects.filter(user=request.user, date=date.today()).first()
+        if today_pnl and today_pnl.total_trades > 0:
+            daily_win_rate = round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
+        else:
+            daily_win_rate = calculate_win_rate(request.user)  # fallback to trade-based
 
         broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
         broker_ready = broker and bool(broker.access_token)
@@ -68,7 +70,7 @@ def dashboard(request):
         # Performance stats for initial render
         performance = {
             'total_trades': Trade.objects.filter(user=request.user).count(),
-            'win_rate': calculate_win_rate(request.user),
+            'win_rate': daily_win_rate,
             'avg_daily_pnl': calculate_average_pnl(request.user),
             'best_day': get_best_day(request.user),
             'worst_day': get_worst_day(request.user),
@@ -84,7 +86,7 @@ def dashboard(request):
             'weekly_trades': stats['weekly_trades'],
             'monthly_pnl': stats['monthly_pnl'],
             'monthly_trades': stats['monthly_trades'],
-            'win_rate': round(win_rate, 2),
+            'win_rate': daily_win_rate,
             'broker_ready': broker_ready,
             'broker': broker,
             'today': date.today(),
@@ -93,7 +95,7 @@ def dashboard(request):
             'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
             'current_margin': float(bot_status.current_margin or 0),
             'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
-            'performance': performance,  # Added for Best Day / BAD Day display
+            'performance': performance,
         }
         return render(request, 'trading/dashboard.html', context)
 
@@ -125,7 +127,13 @@ def dashboard_stats(request):
         'timestamp': now.isoformat(),
         'pnl_source': 'cached',
 
-        # Added: Best Day & BAD Day for live updates
+        # Win rate fields - FIXED
+        'daily_win_rate': 0.0,
+        'daily_win_trades': 0,
+        'daily_total_trades': 0,
+        'weekly_win_rate': 0.0,
+
+        # Best/worst day
         'best_day': None,
         'worst_day': None,
     }
@@ -174,26 +182,51 @@ def dashboard_stats(request):
                     details={'trace': traceback.format_exc()[:500]}
                 )
 
-    # Add best/worst day data
-    best_day_record = get_best_day(user)
-    worst_day_record = get_worst_day(user)
+    # ─── FIXED: Always send win rate stats ───
+    today_pnl = DailyPnL.objects.filter(user=user, date=date.today()).first()
+    if today_pnl and today_pnl.total_trades > 0:
+        data['daily_win_rate'] = round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
+        data['daily_win_trades'] = today_pnl.win_trades
+        data['daily_total_trades'] = today_pnl.total_trades
+    else:
+        data['daily_win_rate'] = calculate_win_rate(user)
+        data['daily_win_trades'] = Trade.objects.filter(user=user, status='EXECUTED', pnl__gt=0).count()
+        data['daily_total_trades'] = Trade.objects.filter(user=user, status='EXECUTED').count()
 
-    if best_day_record:
+    # Weekly win rate (last 7 days)
+    week_start = date.today() - timedelta(days=6)  # 7 days including today
+    weekly = DailyPnL.objects.filter(
+        user=user,
+        date__gte=week_start
+    ).aggregate(
+        win_trades=Sum('win_trades'),
+        total_trades=Sum('total_trades')
+    )
+
+    if weekly['total_trades'] and weekly['total_trades'] > 0:
+        data['weekly_win_rate'] = round((weekly['win_trades'] / weekly['total_trades']) * 100, 2)
+    else:
+        data['weekly_win_rate'] = 0.0
+
+    # Best/worst day
+    best = get_best_day(user)
+    if best:
         data['best_day'] = {
-            'pnl': float(best_day_record.pnl),
-            'date': best_day_record.date.strftime('%d %b %Y') if best_day_record.date else None
+            'pnl': float(best.pnl),
+            'date': best.date.strftime('%d %b %Y')
         }
 
-    if worst_day_record:
+    worst = get_worst_day(user)
+    if worst:
         data['worst_day'] = {
-            'pnl': float(worst_day_record.pnl),
-            'date': worst_day_record.date.strftime('%d %b %Y') if worst_day_record.date else None
+            'pnl': float(worst.pnl),
+            'date': worst.date.strftime('%d %b %Y')
         }
 
-    # ─── FIXED: Send ALL three PnL values for live updates ───
+    # PnL values
     stats = get_user_stats(user)
-    data['daily_pnl']   = float(stats['daily_pnl'].pnl) if stats['daily_pnl'] else 0.0
-    data['weekly_pnl']  = float(stats['weekly_pnl'])                     # Now included
+    data['daily_pnl']   = float(stats['daily_pnl'].pnl if stats['daily_pnl'] else 0)
+    data['weekly_pnl']  = float(stats['weekly_pnl'])
     data['monthly_pnl'] = float(stats['monthly_pnl'])
 
     return JsonResponse(data)
@@ -311,12 +344,12 @@ def pnl_calendar(request):
         for rec in daily_records
     }
 
-    # Override today's value if bot is running (also as string key)
+    # Override today's value if bot is running
     today_str = today.strftime("%Y-%m-%d")
     if bot_status and bot_status.is_running:
         pnl_by_date[today_str] = today_pnl
 
-    # Monthly stats with fallback
+    # Monthly stats
     monthly_stats = daily_records.aggregate(
         total_pnl=Sum('pnl'),
         average_pnl=Avg('pnl'),
@@ -330,7 +363,6 @@ def pnl_calendar(request):
         'max_pnl': Decimal('0.00'), 'min_pnl': Decimal('0.00')
     }
 
-    # Convert None → 0
     for key in monthly_stats:
         if monthly_stats[key] is None:
             monthly_stats[key] = Decimal('0.00') if 'pnl' in key else 0
@@ -455,6 +487,14 @@ def get_user_stats(user):
 
 
 def calculate_win_rate(user):
+    """Safe win rate calculation with fallback to DailyPnL if possible"""
+    # Prefer DailyPnL aggregate (more reliable for daily strategy)
+    today = date.today()
+    today_pnl = DailyPnL.objects.filter(user=user, date=today).first()
+    if today_pnl and today_pnl.total_trades > 0:
+        return round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
+
+    # Fallback to Trade model
     qs = Trade.objects.filter(user=user, status='EXECUTED')
     total = qs.count()
     if total == 0:

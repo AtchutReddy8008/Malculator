@@ -388,7 +388,7 @@
                                     </li>
                                     <li class="mb-4">
                                         <strong>Heartbeat:</strong> 
-                                        <span id="heartbeat-status" class="ms-2">
+                                        <span id="heartbeat-status" class="ms-2 calculating">
                                             Calculating...
                                         </span>
                                     </li>
@@ -422,7 +422,9 @@
                             </div>
                         {% endif %}
 
-                        <div id="last-updated" class="mt-3"></div>
+                        <div id="last-updated" class="mt-3">
+                            Last updated: just now
+                        </div>
                     </div>
                 </div>
             </div>
@@ -434,13 +436,24 @@
                     </div>
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-4">
-                            <span>Win Rate</span>
-                            <strong class="fs-5">{{ win_rate|default:"0" }}%</strong>
+                            <span>Daily Win Rate</span>
+                            <strong id="daily-win-rate-display" class="fs-5 {% if win_rate >= 50 %}text-success{% else %}text-danger{% endif %}">
+                                {{ win_rate|default:"0.00" }}%
+                            </strong>
                         </div>
+
+                        <div class="d-flex justify-content-between mb-4">
+                            <span>Weekly Win Rate</span>
+                            <strong id="weekly-win-rate-display" class="fs-5 text-muted">
+                                Loading...
+                            </strong>
+                        </div>
+
                         <div class="d-flex justify-content-between mb-4">
                             <span>Weekly Trades</span>
                             <strong class="fs-5">{{ weekly_trades|default:"0" }}</strong>
                         </div>
+
                         <div class="d-flex justify-content-between mb-4">
                             <span>Monthly Trades</span>
                             <strong class="fs-5">{{ monthly_trades|default:"0" }}</strong>
@@ -461,9 +474,9 @@
                         </div>
 
                         <div class="d-flex justify-content-between mb-4">
-                            <span>BAD Day</span>
+                            <span>Worst Day</span>
                             <div class="text-end">
-                                <div id="bad-day-pnl" class="fw-bold text-danger">
+                                <div id="worst-day-pnl" class="fw-bold text-danger">
                                     {% if performance.worst_day %}
                                         {% if performance.worst_day.pnl >= 0 %}
                                             +₹{{ performance.worst_day.pnl|floatformat:2 }}
@@ -474,7 +487,7 @@
                                         ₹0.00
                                     {% endif %}
                                 </div>
-                                <small id="bad-day-date">{{ performance.worst_day.date|default:"No data" }}</small>
+                                <small id="worst-day-date">{{ performance.worst_day.date|default:"No data" }}</small>
                             </div>
                         </div>
 
@@ -601,7 +614,7 @@
 
 <script>
 // ────────────────────────────────────────────────
-// LIVE DASHBOARD - Enhanced Heartbeat + All PnL Live
+// LIVE DASHBOARD - Enhanced Heartbeat + All PnL + Win Rate Live
 // ────────────────────────────────────────────────
 
 let isRefreshing = false;
@@ -719,7 +732,27 @@ function refreshDashboard(silent = false) {
             }
         });
 
-        // 5. Best Day & BAD Day
+        // 5. Daily Win Rate (live update)
+        const dailyWinEl = document.getElementById('daily-win-rate-display');
+        if (dailyWinEl && data.daily_win_rate !== undefined) {
+            const rate = data.daily_win_rate.toFixed(2);
+            dailyWinEl.textContent = rate + '%';
+            dailyWinEl.className = Number(data.daily_win_rate) >= 50 
+                ? 'fs-5 text-success' 
+                : 'fs-5 text-danger';
+        }
+
+        // 6. Weekly Win Rate (live update)
+        const weeklyWinEl = document.getElementById('weekly-win-rate-display');
+        if (weeklyWinEl && data.weekly_win_rate !== undefined) {
+            const rate = data.weekly_win_rate.toFixed(2);
+            weeklyWinEl.textContent = rate + '%';
+            weeklyWinEl.className = Number(data.weekly_win_rate) >= 50 
+                ? 'fs-5 text-success' 
+                : 'fs-5 text-danger';
+        }
+
+        // 7. Best Day & Worst Day
         const bestPnlEl = document.getElementById('best-day-pnl');
         const bestDateEl = document.getElementById('best-day-date');
         if (data.best_day && bestPnlEl) {
@@ -731,18 +764,18 @@ function refreshDashboard(silent = false) {
             bestDateEl.textContent = data.best_day.date || '—';
         }
 
-        const badPnlEl = document.getElementById('bad-day-pnl');
-        const badDateEl = document.getElementById('bad-day-date');
-        if (data.worst_day && badPnlEl) {
+        const worstPnlEl = document.getElementById('worst-day-pnl');
+        const worstDateEl = document.getElementById('worst-day-date');
+        if (data.worst_day && worstPnlEl) {
             const val = Number(data.worst_day.pnl).toFixed(2);
             const sign = Number(data.worst_day.pnl) >= 0 ? '+' : '';
-            badPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            worstPnlEl.textContent = `${sign}₹${Math.abs(val).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
         }
-        if (data.worst_day && badDateEl) {
-            badDateEl.textContent = data.worst_day.date || '—';
+        if (data.worst_day && worstDateEl) {
+            worstDateEl.textContent = data.worst_day.date || '—';
         }
 
-        // 6. Last updated
+        // 8. Last updated timestamp
         lastUpdateTime = new Date();
         if (lastUpdatedEl) {
             lastUpdatedEl.textContent = `Last updated: ${lastUpdateTime.toLocaleTimeString('en-IN', {hour12: true})}`;
@@ -763,11 +796,12 @@ function refreshDashboard(silent = false) {
 // Poll every 2 seconds
 setInterval(() => refreshDashboard(), 2000);
 
-// Initial staggered fetches
+// Initial staggered fetches on page load
 window.addEventListener('load', () => {
-    refreshDashboard(true);
+    refreshDashboard(true);           // silent first load
     setTimeout(() => refreshDashboard(), 800);
     setTimeout(() => refreshDashboard(), 1800);
 });
 </script>
+
 {% endblock %}
