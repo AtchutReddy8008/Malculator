@@ -32,9 +32,6 @@ from .tasks import run_user_bot, generate_zerodha_token_task
 from .core.auth import generate_and_set_access_token_db
 from kiteconnect import KiteConnect
 
-# Import Engine for live PnL fallback (avoid circular import issues by importing inside function)
-# from .core.bot_original import Engine, DBLogger
-
 
 def home(request):
     if request.user.is_authenticated:
@@ -61,8 +58,12 @@ def dashboard(request):
         today_pnl = DailyPnL.objects.filter(user=request.user, date=date.today()).first()
         if today_pnl and today_pnl.total_trades > 0:
             daily_win_rate = round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
+            daily_win_trades = today_pnl.win_trades
+            daily_total_trades = today_pnl.total_trades
         else:
-            daily_win_rate = calculate_win_rate(request.user)  # fallback to trade-based
+            daily_win_rate = calculate_win_rate(request.user)
+            daily_win_trades = Trade.objects.filter(user=request.user, status='EXECUTED', pnl__gt=0).count()
+            daily_total_trades = Trade.objects.filter(user=request.user, status='EXECUTED').count()
 
         broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
         broker_ready = broker and bool(broker.access_token)
@@ -71,6 +72,8 @@ def dashboard(request):
         performance = {
             'total_trades': Trade.objects.filter(user=request.user).count(),
             'win_rate': daily_win_rate,
+            'daily_win_trades': daily_win_trades,
+            'daily_total_trades': daily_total_trades,
             'avg_daily_pnl': calculate_average_pnl(request.user),
             'best_day': get_best_day(request.user),
             'worst_day': get_worst_day(request.user),
@@ -127,7 +130,7 @@ def dashboard_stats(request):
         'timestamp': now.isoformat(),
         'pnl_source': 'cached',
 
-        # Win rate fields - FIXED
+        # Win rate fields
         'daily_win_rate': 0.0,
         'daily_win_trades': 0,
         'daily_total_trades': 0,
@@ -151,7 +154,7 @@ def dashboard_stats(request):
         data['daily_target'] = float(bot_status.daily_profit_target or 0)
         data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
 
-        # Live PnL fallback
+        # Live PnL fallback (only when cached is zero and bot is running)
         if cached_pnl == 0 and bot_status.is_running:
             try:
                 from .core.bot_original import Engine, DBLogger
@@ -182,19 +185,20 @@ def dashboard_stats(request):
                     details={'trace': traceback.format_exc()[:500]}
                 )
 
-    # ─── FIXED: Always send win rate stats ───
+    # ─── Always send accurate win rate stats ───
     today_pnl = DailyPnL.objects.filter(user=user, date=date.today()).first()
     if today_pnl and today_pnl.total_trades > 0:
         data['daily_win_rate'] = round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
         data['daily_win_trades'] = today_pnl.win_trades
         data['daily_total_trades'] = today_pnl.total_trades
     else:
+        # Fallback only when no DailyPnL record exists yet
         data['daily_win_rate'] = calculate_win_rate(user)
         data['daily_win_trades'] = Trade.objects.filter(user=user, status='EXECUTED', pnl__gt=0).count()
         data['daily_total_trades'] = Trade.objects.filter(user=user, status='EXECUTED').count()
 
-    # Weekly win rate (last 7 days)
-    week_start = date.today() - timedelta(days=6)  # 7 days including today
+    # Weekly win rate (last 7 days inclusive)
+    week_start = date.today() - timedelta(days=6)
     weekly = DailyPnL.objects.filter(
         user=user,
         date__gte=week_start
@@ -488,13 +492,13 @@ def get_user_stats(user):
 
 def calculate_win_rate(user):
     """Safe win rate calculation with fallback to DailyPnL if possible"""
-    # Prefer DailyPnL aggregate (more reliable for daily strategy)
+    # Prefer DailyPnL aggregate (most reliable for daily strategy)
     today = date.today()
     today_pnl = DailyPnL.objects.filter(user=user, date=today).first()
     if today_pnl and today_pnl.total_trades > 0:
         return round((today_pnl.win_trades / today_pnl.total_trades) * 100, 2)
 
-    # Fallback to Trade model
+    # Fallback to Trade model (only used when no DailyPnL record exists yet)
     qs = Trade.objects.filter(user=user, status='EXECUTED')
     total = qs.count()
     if total == 0:
