@@ -27,8 +27,8 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(11, 7, 0)
-    ENTRY_END = dtime(11, 9, 30)
+    ENTRY_START = dtime(11, 11, 0)
+    ENTRY_END = dtime(11, 12, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
     EXIT_TIME = dtime(15, 0)
     MARKET_CLOSE = dtime(15, 30)
@@ -57,7 +57,7 @@ class Config:
     PNL_CHECK_INTERVAL_SECONDS = 1
     MIN_HOLD_SECONDS_FOR_PROFIT = 1800
     HEARTBEAT_INTERVAL = 5
-    PERIODIC_PNL_SNAPSHOT_INTERVAL = 300
+    PERIODIC_PNL_SNAPSHOT_INTERVAL = 1
     ENTRY_COOLDOWN_AFTER_ATTEMPT_SEC = 300   # 5 min after any attempt
     ENTRY_SLEEP_AFTER_SUCCESS_SEC   = 1800   # 30 min after success — very safe
 
@@ -1584,7 +1584,7 @@ class TradingApplication:
         self._last_idle_date = None
         self._last_hourly_log = 0
         self._last_entry_check_time = 0.0
-        self._entry_guard_seconds = 60.0
+        self._entry_guard_seconds = 10.0
         self._last_token_health_check = time.time()
         self._daily_summary_saved = False
         self._last_snapshot_time = time.time()
