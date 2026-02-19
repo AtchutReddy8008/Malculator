@@ -19,6 +19,7 @@ import holidays
 from decimal import Decimal
 from kiteconnect.exceptions import TokenException
 
+
 # ===================== CONFIGURATION =====================
 class Config:
     SPOT_SYMBOL = "NSE:NIFTY 50"
@@ -26,10 +27,10 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(10, 13, 0)
-    ENTRY_END = dtime(10, 14, 30)
+    ENTRY_START = dtime(11, 5, 0)
+    ENTRY_END = dtime(11, 6, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(10, 45)
+    EXIT_TIME = dtime(15, 0)
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
     HEDGE_PREMIUM_RATIO = 0.10
@@ -56,10 +57,14 @@ class Config:
     PNL_CHECK_INTERVAL_SECONDS = 1
     MIN_HOLD_SECONDS_FOR_PROFIT = 1800
     HEARTBEAT_INTERVAL = 5
-    PERIODIC_PNL_SNAPSHOT_INTERVAL = 300
+    PERIODIC_PNL_SNAPSHOT_INTERVAL = 1
+    ENTRY_COOLDOWN_AFTER_ATTEMPT_SEC = 300   # 5 min after any attempt
+    ENTRY_SLEEP_AFTER_SUCCESS_SEC   = 1800   # 30 min after success — very safe
+
 
 INDIA_HOLIDAYS = holidays.India()
 EXTRA_NSE_HOLIDAYS = set()
+
 
 # ===================== SAFE JSON SERIALIZATION =====================
 def make_json_safe(obj):
@@ -73,6 +78,7 @@ def make_json_safe(obj):
         return str(obj)
     else:
         return obj
+
 
 # ===================== LOGGING (DB-BASED) =====================
 class DBLogger:
@@ -141,6 +147,7 @@ class DBLogger:
         print("="*80 + "\n")
         self.info(f"BANNER: {msg}")
 
+
 # ===================== STATE (DB-BASED) =====================
 class DBState:
     def __init__(self, user):
@@ -182,6 +189,7 @@ class DBState:
                 "bot_order_ids": [],
                 "entry_time": None,
                 "exit_final_pnl": 0.0,
+                "logged_orders": [],  # Changed to list
             }
         return state_data
 
@@ -209,6 +217,7 @@ class DBState:
                 "adjustments_today": {"ce": 0, "pe": 0},
                 "last_adjustment_date": None,
                 "exit_final_pnl": 0.0,
+                "logged_orders": [],
             })
             self.data["last_reset"] = today_str
             self.save()
@@ -236,11 +245,13 @@ class DBState:
             "bot_order_ids": [],
             "entry_time": None,
             "exit_final_pnl": 0.0,
+            "logged_orders": [],
         })
         self.save()
         today = datetime.now(Config.TIMEZONE).date()
         self.bot_status.entry_attempted_date = today
         self.bot_status.save(update_fields=['entry_attempted_date'])
+
 
 # ===================== HELPER =====================
 def create_leg(symbol: str, side: str, qty: int, entry_price: float):
@@ -253,6 +264,7 @@ def create_leg(symbol: str, side: str, qty: int, entry_price: float):
         "status": "OPEN",
         "last_known_ltp": entry_price
     }
+
 
 # ===================== ENGINE =====================
 class Engine:
@@ -296,8 +308,6 @@ class Engine:
     def _get_or_create_trade(self, symbol, side, qty, price, order_id=None):
         direction = 'SHORT' if side == 'SELL' else 'LONG'
         option_type = 'CE' if 'CE' in symbol else 'PE' if 'PE' in symbol else None
-
-        # Try to find existing open trade
         trade = Trade.objects.filter(
             user=self.user,
             symbol=symbol,
@@ -306,11 +316,8 @@ class Engine:
             status='EXECUTED',
             exit_time__isnull=True
         ).first()
-
         if trade:
             return trade
-
-        # Create new
         trade_id = f"{self.user.id}_{int(time.time())}_{symbol}"
         trade = Trade.objects.create(
             user=self.user,
@@ -661,7 +668,11 @@ class Engine:
                             self.logger.warning(f"Order completed but average_price 0 for {symbol} - using LTP fallback")
                             filled_price = self.bulk_ltp([symbol])[symbol]
 
-                        # Create Trade record for entry
+                        logged_list = self.state.data.setdefault("logged_orders", [])
+                        if order_id not in logged_list:
+                            logged_list.append(order_id)
+                            self.state.save()
+
                         side_for_trade = "BUY" if side == "BUY" else "SELL"
                         trade = self._get_or_create_trade(symbol, side_for_trade, qty, filled_price, order_id)
 
@@ -923,9 +934,8 @@ class Engine:
         with transaction.atomic():
             bot_status = BotStatus.objects.select_for_update().get(user=self.user)
             today = datetime.now(Config.TIMEZONE).date()
-            today_str = str(today)
             if bot_status.entry_attempted_date == today:
-                self.logger.info("ENTRY BLOCKED - already attempted (inner atomic check)")
+                self.logger.info("ENTRY BLOCKED - already attempted (atomic lock)")
                 return False
 
         entry_call_time = datetime.now(Config.TIMEZONE)
@@ -937,7 +947,6 @@ class Engine:
         self.state.daily_reset()
 
         today = datetime.now(Config.TIMEZONE).date()
-        today_str = str(today)
 
         if self.state.bot_status.entry_attempted_date == today:
             self.logger.info("ENTRY BLOCKED — already traded today (final DB check)")
@@ -1062,7 +1071,7 @@ class Engine:
         self.state.data.update({
             "trade_active": True,
             "trade_taken_today": True,
-            "entry_date": today_str,
+            "entry_date": str(today),
             "trade_symbols": trade_symbols,
             "algo_legs": algo_legs,
             "positions": {
@@ -1109,17 +1118,85 @@ class Engine:
         self.logger.critical(f"algo_legs keys: {list(self.state.data.get('algo_legs', {}).keys())}")
         self.logger.critical(f"algo_legs content: {self.state.data.get('algo_legs')}")
         self.logger.critical(f"entry_premiums: {self.state.data.get('entry_premiums')}")
-        self.logger.critical(f"Initial net credit per lot approx: {self.state.data['entry_premiums'].get('ce_short', 0) + self.state.data['entry_premiums'].get('pe_short', 0) - self.state.data['entry_premiums'].get('ce_hedge', 0) - self.state.data['entry_premiums'].get('pe_hedge', 0):.2f}")
+        net_credit_approx = (
+            self.state.data['entry_premiums'].get('ce_short', 0) +
+            self.state.data['entry_premiums'].get('pe_short', 0) -
+            self.state.data['entry_premiums'].get('ce_hedge', 0) -
+            self.state.data['entry_premiums'].get('pe_hedge', 0)
+        )
+        self.logger.critical(f"Initial net credit per lot approx: {net_credit_approx:.2f}")
         current_pnl = self.algo_pnl()
         self.logger.critical(f"Current algo_pnl() immediately after entry: {current_pnl:.2f}")
 
+        time.sleep(6)
+        if not self._verify_all_legs_present():
+            self.logger.critical("POST-ENTRY VERIFICATION FAILED - incomplete fill")
+            self._emergency_square_off("Incomplete entry")
+            self.state.full_reset()
+            return False
+
+        self.logger.critical("ENTRY VERIFIED SUCCESSFULLY - all legs confirmed in positions")
+
+        bot_status = BotStatus.objects.get(user=self.user)
+        bot_status.entry_attempted_date = today
+        bot_status.last_successful_entry = timezone.now()
+        bot_status.save(update_fields=['entry_attempted_date', 'last_successful_entry'])
+        self.logger.critical("DAY ENTRY LOCK PERMANENTLY SET IN DATABASE")
+
         self.update_daily_profit_target()
         final_target = self.state.data["profit_target_rupee"]
-        self.logger.big_banner(f"TRADE ENTERED SUCCESSFULLY | TODAY'S TARGET: +₹{final_target:,} | STOP LOSS: -₹{final_target:,}")
+        self.logger.big_banner(f"TRADE ENTERED & VERIFIED | TODAY'S TARGET: +₹{final_target:,} | STOP LOSS: -₹{final_target:,}")
 
         self.state.save()
         time.sleep(2)
         return True
+
+    def _verify_all_legs_present(self) -> bool:
+        try:
+            positions = self.kite.positions()["net"]
+            pos_dict = {p["tradingsymbol"]: p["quantity"] for p in positions if p["product"] == "MIS"}
+
+            expected = self.state.data.get("position_qty", {})
+            if not expected:
+                self.logger.critical("No expected positions in state - cannot verify")
+                return False
+
+            missing = []
+            wrong = []
+            for sym, exp_qty in expected.items():
+                real = pos_dict.get(sym, 0)
+                if real == 0:
+                    missing.append(sym)
+                elif real != exp_qty:
+                    wrong.append(f"{sym}: exp {exp_qty}, got {real}")
+
+            if missing or wrong:
+                self.logger.critical("POSITION VERIFICATION FAILED", {
+                    "missing": missing,
+                    "wrong_qty": wrong
+                })
+                return False
+
+            self.logger.info("All legs verified present with correct quantity")
+            return True
+        except Exception as e:
+            self.logger.error("Verification crashed", {"error": str(e)})
+            return False
+
+    def _emergency_square_off(self, reason="Emergency"):
+        self.logger.critical(f"EMERGENCY SQUARE-OFF: {reason}")
+        try:
+            pos_list = self.kite.positions()["net"]
+            for pos in pos_list:
+                if pos["product"] == "MIS" and pos["quantity"] != 0:
+                    qty_abs = abs(pos["quantity"])
+                    side = "SELL" if pos["quantity"] > 0 else "BUY"
+                    self.logger.warning(f"Emergency close: {pos['tradingsymbol']} {side} {qty_abs}")
+                    for _ in range(2):
+                        self.order(pos["tradingsymbol"], side, qty_abs)
+                        time.sleep(2)
+        except Exception as e:
+            self.logger.critical("EMERGENCY FLATTEN FAILED - MANUAL ACTION NEEDED", {"error": str(e)})
 
     def check_existing_positions(self) -> bool:
         try:
@@ -1309,38 +1386,50 @@ class Engine:
         now_t = datetime.now(Config.TIMEZONE).time()
         if now_t >= Config.EXIT_TIME:
             return "Scheduled exit time reached"
+
         now = datetime.now(Config.TIMEZONE)
         entry_time = self.state.data.get("entry_time")
         time_since_entry = (now - entry_time).total_seconds() if entry_time else float('inf')
+
         pnl_val = self.algo_pnl()
         target_rupee = self.state.data.get("profit_target_rupee", 0.0)
-        if abs(pnl_val - self.last_pnl) > target_rupee * 0.2:
-            self.logger.critical("P&L SPIKE DETECTED - IGNORING FOR SAFETY", {
-                "current": pnl_val,
-                "last": self.last_pnl,
-                "jump": pnl_val - self.last_pnl
+
+        # ── Relaxed spike filter ──
+        if target_rupee > 0 and abs(pnl_val - self.last_pnl) > target_rupee * 0.5:
+            self.logger.critical("LARGE P&L JUMP DETECTED - still checking exit conditions", {
+                "current": round(pnl_val, 2),
+                "last": round(self.last_pnl, 2),
+                "jump": round(pnl_val - self.last_pnl, 2),
+                "threshold": round(target_rupee * 0.5, 2)
             })
-            return None
+            # Do NOT return None — continue checking normal exit rules
+
         self.last_pnl = pnl_val
+
         if time_since_entry < 300 and abs(pnl_val) > 2500:
-            self.logger.critical("EXTREME P&L GLITCH DETECTED - IGNORED", {
+            self.logger.critical("EXTREME EARLY P&L GLITCH DETECTED - IGNORED", {
                 "pnl": pnl_val,
                 "seconds_since_entry": time_since_entry
             })
             return None
+
         if target_rupee > 0:
             if pnl_val >= target_rupee and time_since_entry >= Config.MIN_HOLD_SECONDS_FOR_PROFIT:
                 return f"Profit target reached ₹{pnl_val:,.0f}"
             if pnl_val <= -target_rupee:
                 return f"Stop loss hit ₹{pnl_val:,.0f}"
+
         vix_now = self.vix()
         if vix_now and vix_now >= Config.VIX_EXIT_ABS:
             return "VIX absolute exit"
+
         entry_vix = self.state.data.get("entry_vix")
         if entry_vix and vix_now and vix_now >= entry_vix * Config.VIX_SPIKE_MULTIPLIER:
             return "VIX spike detected"
+
         if os.path.exists(Config.EMERGENCY_STOP_FILE):
             return "Emergency stop file detected"
+
         return None
 
     def exit(self, reason: str):
@@ -1358,11 +1447,7 @@ class Engine:
             unrealized_before = self.algo_pnl()
             realized_so_far = self.state.data.get("realized_pnl", 0.0)
             estimated = realized_so_far + unrealized_before
-            self.logger.info("PRE-EXIT ESTIMATED PNL", {
-                "estimated": round(estimated, 2),
-                "realized": round(realized_so_far, 2),
-                "unrealized": round(unrealized_before, 2)
-            })
+            self.logger.info("PRE-EXIT ESTIMATE", {"estimated_pnl": round(estimated, 2)})
 
             net_positions = self.kite.positions()["net"]
             shorts = []
@@ -1376,12 +1461,10 @@ class Engine:
                 sym = pos["tradingsymbol"]
                 if pos["product"] != "MIS" or pos["quantity"] == 0 or sym not in bot_symbols:
                     continue
-                expected_qty = pos_qty_map.get(sym)
-                if expected_qty is None or abs(pos["quantity"]) != abs(expected_qty):
-                    self.logger.warning("Qty mismatch - skipping", {"sym": sym})
+                expected = pos_qty_map.get(sym)
+                if expected is None or abs(pos["quantity"]) != abs(expected):
                     continue
                 exit_price = self.bulk_ltp([sym])[sym]
-                # Close Trade record and accumulate PnL
                 leg_pnl = self._close_trade_record(sym, exit_price)
                 total_leg_pnl += leg_pnl
                 if pos["quantity"] < 0:
@@ -1389,7 +1472,6 @@ class Engine:
                 else:
                     hedges.append((sym, "SELL", pos["quantity"]))
 
-            # Execute close orders
             self.logger.info("Closing shorts first")
             for sym, side, qty in shorts:
                 self.order(sym, side, qty)
@@ -1400,8 +1482,9 @@ class Engine:
                 self.order(sym, side, qty)
             time.sleep(5)
 
-            # Final PnL
-            still_open = self._get_still_open_mis_positions()
+            still_open = [p for p in self.kite.positions()["net"]
+                         if p["product"] == "MIS" and p["quantity"] != 0 and p["tradingsymbol"] in bot_symbols]
+
             unrealized_after = self.algo_pnl() if still_open else 0.0
             final_pnl = float(total_leg_pnl) + unrealized_after
 
@@ -1410,17 +1493,14 @@ class Engine:
             self.state.save()
 
             self.logger.critical("EXIT SUMMARY", {
-                "estimated_before": round(estimated, 2),
-                "final_after": round(final_pnl, 2),
-                "still_open": len(still_open),
-                "reason": reason
+                "estimated": round(estimated, 2),
+                "final": round(final_pnl, 2),
+                "still_open": len(still_open)
             })
 
             if still_open:
-                self.logger.critical("PARTIAL EXIT - emergency flatten")
-                self._emergency_square_off("Partial exit")
+                self._emergency_square_off("Partial close detected")
 
-            # Update DailyPnL - accumulate
             today = datetime.now(Config.TIMEZONE).date()
             with transaction.atomic():
                 daily, created = DailyPnL.objects.get_or_create(
@@ -1433,7 +1513,6 @@ class Engine:
                         'loss_trades': 0,
                     }
                 )
-                # Add to existing
                 daily.pnl = (daily.pnl or Decimal('0.00')) + Decimal(str(final_pnl)).quantize(Decimal('0.00'))
                 if len(still_open) == 0:
                     daily.total_trades = (daily.total_trades or 0) + 1
@@ -1443,64 +1522,50 @@ class Engine:
                         daily.loss_trades = (daily.loss_trades or 0) + 1
                 daily.save()
 
-            self.logger.critical("DailyPnL UPDATED", {
+            self.logger.critical("FINAL DAILY PnL SAVED ON EXIT", {
                 "date": today,
-                "added_pnl": round(final_pnl, 2),
-                "new_total": float(daily.pnl),
-                "total_trades": daily.total_trades
+                "total_pnl": final_pnl,
+                "saved_record": daily.id,
+                "created": created
             })
 
             self.state.full_reset()
 
         except Exception as e:
-            self.logger.critical("EXIT CRASHED", {"error": str(e), "trace": traceback.format_exc()})
+            self.logger.critical("Exit failed - transaction rolled back", {
+                "error": str(e),
+                "trace": traceback.format_exc()
+            })
             self._emergency_square_off("Exit crashed")
             raise
-
-    def _get_still_open_mis_positions(self):
-        try:
-            pos = self.kite.positions()["net"]
-            return [
-                p["tradingsymbol"]
-                for p in pos
-                if p["product"] == "MIS" and p["quantity"] != 0
-            ]
-        except:
-            return ["fetch_failed"]
-
-    def _emergency_square_off(self, reason="Emergency"):
-        self.logger.critical(f"EMERGENCY FLATTEN: {reason}")
-        try:
-            for pos in self.kite.positions()["net"]:
-                if pos["product"] == "MIS" and pos["quantity"] != 0:
-                    qty = abs(pos["quantity"])
-                    side = "SELL" if pos["quantity"] > 0 else "BUY"
-                    for _ in range(2):
-                        self.order(pos["tradingsymbol"], side, qty)
-                        time.sleep(2)
-        except Exception as e:
-            self.logger.critical("EMERGENCY FLATTEN FAILED", {"error": str(e)})
 
     def save_periodic_pnl_snapshot(self):
         try:
             if not self.state.data.get("trade_active"):
                 return
             unrealized = self.algo_pnl()
+            realized = self.state.data.get("realized_pnl", 0.0)
+            total = unrealized + realized
             today = datetime.now(Config.TIMEZONE).date()
             with transaction.atomic():
                 daily, created = DailyPnL.objects.update_or_create(
                     user=self.user,
                     date=today,
                     defaults={
-                        'pnl': Decimal(str(unrealized)).quantize(Decimal('0.00')),
+                        'pnl': Decimal(str(total)).quantize(Decimal('0.00')),
+                        # ── IMPORTANT ── trade/win/loss stats are NOT updated here
                     }
                 )
             self.logger.info("PERIODIC SNAPSHOT SAVED", {
-                "pnl": round(unrealized, 2),
-                "record_id": daily.id
+                "unrealized": round(unrealized, 2),
+                "realized": round(realized, 2),
+                "total": round(total, 2),
+                "record": daily.id,
+                "created": created
             })
         except Exception as e:
             self.logger.warning("Periodic snapshot failed", {"error": str(e)})
+
 
 # ===================== MAIN APPLICATION =====================
 class TradingApplication:
@@ -1531,126 +1596,69 @@ class TradingApplication:
         last_heartbeat = time.time()
 
         try:
-            while self.running:
+            bot_status = BotStatus.objects.get(user=self.user)
+            if bot_status.is_running:
+                self.logger.warning("Bot already running — aborting duplicate instance")
+                return
+            bot_status.is_running = True
+            bot_status.last_heartbeat = timezone.now()
+            bot_status.save(update_fields=['is_running', 'last_heartbeat'])
+        except Exception as e:
+            print("Failed to mark bot running:", e)
+
+        while self.running:
+            try:
                 now_str = datetime.now(Config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                self.logger.critical(f"[LOOP ALIVE] {now_str} | running={self.running} | trade_active={self.engine.state.data.get('trade_active', False)}")
+                self.logger.critical(f"[ALIVE] {now_str} | trade_active={self.engine.state.data.get('trade_active')}")
 
                 try:
                     bot_status = BotStatus.objects.get(user=self.user)
                     if not bot_status.is_running:
-                        self.logger.critical("STOP SIGNAL RECEIVED FROM DATABASE - shutting down gracefully")
+                        self.logger.critical("STOP SIGNAL FROM DB")
                         if self.engine.state.data.get("trade_active"):
-                            self.engine.exit("Manual stop from dashboard")
+                            self.engine.exit("Manual stop")
                         self.running = False
                         break
                 except Exception as e:
-                    self.logger.critical("STOP-CHECK FAILED ─ DB may be the problem", {
-                        "error": str(e),
-                        "trace": traceback.format_exc()[:800]
-                    })
+                    self.logger.critical("DB stop check failed", {"error": str(e)})
 
                 now = datetime.now(Config.TIMEZONE)
                 current_time = now.time()
                 today_date = now.date()
-
-                self.logger.info(f"[TIME CHECK] Current: {current_time.strftime('%H:%M:%S')} | Entry window: {Config.ENTRY_START} – {Config.ENTRY_END}")
 
                 self.engine.state.daily_reset()
 
                 if self._last_idle_date != today_date:
                     self._early_0919_logged = False
                     self._snapshot_logged = False
-                    self._idle_logged_today = False
                     self._daily_summary_saved = False
                     self._last_idle_date = today_date
-
-                try:
-                    net = self.engine.kite.positions()["net"]
-                    bot_symbols = set(self.engine.state.data.get("trade_symbols", []))
-                    if bot_symbols:
-                        current_qty = sum(
-                            abs(p["quantity"])
-                            for p in net
-                            if p["product"] == "MIS" and p["tradingsymbol"] in bot_symbols
-                        )
-                        expected_qty = self.engine.state.data.get("qty", 0)
-                        if expected_qty > 0 and current_qty == 0:
-                            self.logger.big_banner("MANUAL CLOSE DETECTED - AUTO RECOVERING")
-                            self.engine.state.full_reset()
-                except Exception as e:
-                    self.logger.error("Periodic manual close check failed", {"error": str(e)})
-
-                if dtime(8, 55) <= current_time < dtime(10, 5):
-                    if self.engine.instruments is None or self.engine.weekly_df is None:
-                        self.logger.info("PRE-LOADING instruments & weekly data")
-                        self.engine.load_instruments()
-                        self.engine.load_weekly_df()
-
-                if dtime(9, 19) <= current_time < dtime(9, 20) and not self._early_0919_logged:
-                    self.logger.big_banner("EARLY MARKET PREVIEW - 09:19 IST (Pre-Entry Setup)")
-                    try:
-                        if self.engine.instruments is None or self.engine.weekly_df is None:
-                            self.logger.info("Loading fresh instruments & weekly data for 09:19 preview")
-                            self.engine.load_instruments()
-                            self.engine.load_weekly_df()
-                        spot_now = self.engine.spot()
-                        vix_now = self.engine.vix()
-                        if spot_now:
-                            self.logger.info("Spot at 09:19", {"spot": spot_now})
-                        if vix_now:
-                            self.logger.info("VIX at 09:19", {"vix": vix_now})
-                        self.engine.startup_banner()
-                        self.engine.preview_profit_calculation()
-                        self._early_0919_logged = True
-                    except Exception as e:
-                        self.logger.error("09:19 preview failed", {
-                            "error": str(e),
-                            "trace": traceback.format_exc()
-                        })
-
-                if dtime(9, 0) <= current_time < dtime(9, 30) and not self._snapshot_logged:
-                    if self.engine.instruments is None:
-                        self.engine.load_instruments()
-                        self.engine.load_weekly_df()
-                    self.engine.startup_banner()
-                    self._snapshot_logged = True
-
-                if current_time >= Config.TOKEN_REFRESH_TIME and not self.token_refreshed_today:
-                    attempts = 0
-                    while attempts < Config.MAX_TOKEN_ATTEMPTS:
-                        attempts += 1
-                        self.logger.info(f"Daily token refresh attempt {attempts}")
-                        access_token = generate_and_set_access_token_db(self.engine.kite, self.broker)
-                        if access_token:
-                            self.engine.load_instruments()
-                            self.engine.load_weekly_df()
-                            self.token_refreshed_today = True
-                            self.engine.startup_banner()
-                            break
-                        time.sleep(60)
-                    else:
-                        self.logger.critical("Token refresh failed - exiting")
-                        break
-
-                if current_time < Config.TOKEN_REFRESH_TIME:
-                    self.token_refreshed_today = False
-                    self._snapshot_logged = False
 
                 if time.time() - self._last_token_health_check > 900:
                     try:
                         self.engine.kite.profile()
-                        self._last_token_health_check = time.time()
                     except TokenException:
-                        self.logger.critical("TOKEN EXPIRED MID-DAY — attempting re-auth")
-                        success = self.engine._authenticate()
-                        if success:
-                            self.logger.info("Mid-day token refresh succeeded")
-                        else:
-                            self.logger.critical("Mid-day re-auth FAILED — stopping bot")
-                            self.running = False
+                        self.engine._authenticate()
                     except Exception as e:
-                        self.logger.warning("Token health check failed", {"error": str(e)})
+                        self.logger.warning("Token health failed", {"error": str(e)})
                     self._last_token_health_check = time.time()
+
+                if dtime(8, 55) <= current_time < dtime(10, 5):
+                    if self.engine.instruments is None or self.engine.weekly_df is None:
+                        self.engine.load_instruments()
+                        self.engine.load_weekly_df()
+
+                if dtime(9, 19) <= current_time < dtime(9, 20) and not self._early_0919_logged:
+                    self.logger.big_banner("09:19 PREVIEW")
+                    try:
+                        if self.engine.instruments is None or self.engine.weekly_df is None:
+                            self.engine.load_instruments()
+                            self.engine.load_weekly_df()
+                        self.engine.startup_banner()
+                        self.engine.preview_profit_calculation()
+                        self._early_0919_logged = True
+                    except Exception as e:
+                        self.logger.error("Preview failed", {"error": str(e)})
 
                 if self.engine.instruments is not None and self.engine.weekly_df is not None:
                     if self.engine.state.data["trade_active"]:
@@ -1658,104 +1666,95 @@ class TradingApplication:
                         if reason:
                             self.engine.exit(reason)
                         else:
-                            adjusted = self.engine.check_and_adjust_defensive()
-                            if adjusted:
-                                self.engine.update_daily_profit_target(force=True)
-                            if time.time() - self._last_hourly_log >= 3600:
-                                current_pnl = self.engine.algo_pnl()
-                                actual_used = self.engine.actual_used_capital()
-                                self.logger.info("HOURLY STATUS", {
-                                    "unrealized_pnl_₹": round(current_pnl, 2),
-                                    "target_₹": round(self.engine.state.data.get("profit_target_rupee", 0)),
-                                    "actual_capital_blocked_₹": round(actual_used)
-                                })
-                                self._last_hourly_log = time.time()
-                            if time.time() - last_pnl_print >= 1.0:
-                                pnl_now = self.engine.algo_pnl()
-                                self.logger.info("Live unrealized P&L", {
-                                    "pnl_₹": round(pnl_now, 2),
-                                    "legs_active": len(self.engine.state.data.get("algo_legs", {}))
-                                })
-                                last_pnl_print = time.time()
+                            self.engine.check_and_adjust_defensive()
                     else:
                         if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
                             today_weekday = datetime.now(Config.TIMEZONE).weekday()
                             if today_weekday == 1:
-                                self.logger.critical("TUESDAY SKIP ACTIVATED - NO ENTRY ATTEMPT TODAY")
+                                self.logger.critical("TUESDAY SKIP - NO ENTRY")
                                 time.sleep(300)
                                 continue
-                            self.logger.critical("ENTRY WINDOW IS OPEN RIGHT NOW", {
-                                "current_time": current_time.strftime("%H:%M:%S"),
-                                "start": Config.ENTRY_START.strftime("%H:%M:%S"),
-                                "end": Config.ENTRY_END.strftime("%H:%M:%S")
-                            })
+
+                            with transaction.atomic():
+                                bot_status = BotStatus.objects.select_for_update().get(user=self.user)
+                                today = datetime.now(Config.TIMEZONE).date()
+                                if bot_status.entry_attempted_date == today:
+                                    self.logger.critical("ENTRY PERMANENTLY BLOCKED TODAY - already attempted")
+                                    time.sleep(600)
+                                    continue
+
+                            try:
+                                net = self.engine.kite.positions()["net"]
+                                total_nfo_qty = sum(
+                                    abs(p["quantity"])
+                                    for p in net
+                                    if p["product"] == "MIS" and "NIFTY" in p["tradingsymbol"]
+                                )
+                                if total_nfo_qty >= 65:
+                                    self.logger.critical("LIVE NIFTY POSITION DETECTED - skipping entry")
+                                    self.engine.state.data["trade_active"] = True
+                                    self.engine.state.save()
+                                    time.sleep(600)
+                                    continue
+                            except Exception as e:
+                                self.logger.error("Pre-entry position check failed", {"error": str(e)})
+
                             now_ts = time.time()
-                            if now_ts - self._last_entry_check_time < 60:
-                                self.logger.info("Entry guard active — skipping this cycle (60s cooldown)")
-                                time.sleep(5)
+                            if now_ts - self._last_entry_check_time < Config.ENTRY_COOLDOWN_AFTER_ATTEMPT_SEC:
+                                self.logger.info("Hard cooldown active after previous attempt")
+                                time.sleep(30)
                                 continue
                             self._last_entry_check_time = now_ts
-                            self.logger.critical("=== DECIDED TO ATTEMPT ENTRY ===")
-                            try:
-                                bot_status = BotStatus.objects.get(user=self.user)
-                                self.logger.critical(f"entry_attempted_date in DB = {bot_status.entry_attempted_date}")
-                                self.logger.critical(f"trade_taken_today = {self.engine.state.data.get('trade_taken_today')}")
-                            except:
-                                self.logger.critical("Cannot read DB state")
+
+                            self.logger.critical("=== ENTRY WINDOW OPEN + ALL CHECKS PASSED - ATTEMPTING ===")
+
                             try:
                                 success = self.engine.enter()
                                 if success:
-                                    bot_status = BotStatus.objects.get(user=self.user)
-                                    bot_status.last_successful_entry = timezone.now()
-                                    bot_status.save(update_fields=['last_successful_entry'])
-                                    self.logger.big_banner("ENTRY SUCCESS — day permanently locked")
-                                    time.sleep(300)
+                                    with transaction.atomic():
+                                        bot_status.refresh_from_db()
+                                        bot_status.entry_attempted_date = today
+                                        bot_status.last_successful_entry = timezone.now()
+                                        bot_status.save(update_fields=['entry_attempted_date', 'last_successful_entry'])
+                                    self.logger.big_banner("ENTRY SUCCESS - DAY PERMANENTLY LOCKED")
+                                    time.sleep(Config.ENTRY_SLEEP_AFTER_SUCCESS_SEC)
                                 else:
-                                    self.logger.warning("Entry attempt failed — will retry next minute if still in window")
-                                    time.sleep(10)
+                                    self.logger.warning("Entry attempt failed - will retry if window still open")
+                                    time.sleep(300)
                             except Exception as e:
-                                self.logger.error("Entry execution crashed", {"error": str(e), "trace": traceback.format_exc()})
-                                time.sleep(30)
+                                self.logger.critical("ENTRY CRASHED", {"error": str(e), "trace": traceback.format_exc()})
+                                time.sleep(600)
 
                 if current_time >= Config.MARKET_CLOSE and not self._daily_summary_saved:
                     try:
                         unrealized = self.engine.algo_pnl()
+                        realized = self.engine.state.data.get("realized_pnl", 0.0)
+                        total = unrealized + realized
                         today = datetime.now(Config.TIMEZONE).date()
                         with transaction.atomic():
-                            daily, created = DailyPnL.objects.update_or_create(
+                            DailyPnL.objects.update_or_create(
                                 user=self.user,
                                 date=today,
                                 defaults={
-                                    'pnl': Decimal(str(unrealized)),
-                                    'total_trades': len(self.engine.state.data.get("trade_symbols", [])) // 4 if self.engine.state.data.get("trade_symbols") else 0,
-                                    'win_trades': 1 if unrealized > 0 else 0,
-                                    'loss_trades': 1 if unrealized < 0 else 0,
+                                    'pnl': Decimal(str(total)).quantize(Decimal('0.00'))
                                 }
                             )
-                        self.logger.big_banner(f"DAILY PnL SAVED AT MARKET CLOSE | PnL: ₹{unrealized:,.2f} | Record {'created' if created else 'updated'}")
                         self._daily_summary_saved = True
+                        self.logger.big_banner(f"MARKET CLOSE PnL SAVED: ₹{total:,.2f} (realized {realized:,.2f} + unrealized {unrealized:,.2f})")
                     except Exception as e:
-                        self.logger.error("Market close PnL save failed", {"error": str(e)})
+                        self.logger.error("Close save failed", {"error": str(e)})
 
                 if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                     try:
+                        pnl = float(self.engine.algo_pnl() or 0)
+                        margin = float(self.engine.actual_used_capital() or 0)
                         bot_status = BotStatus.objects.get(user=self.user)
-                        current_pnl = float(self.engine.algo_pnl() or 0)
-                        current_margin = float(self.engine.actual_used_capital() or 0)
                         bot_status.last_heartbeat = timezone.now()
-                        bot_status.current_unrealized_pnl = Decimal(str(current_pnl))
-                        bot_status.current_margin = Decimal(str(current_margin))
-                        bot_status.save(update_fields=[
-                            'last_heartbeat',
-                            'current_unrealized_pnl',
-                            'current_margin'
-                        ])
-                        self.logger.info("Heartbeat saved", {
-                            "unrealized_pnl": round(current_pnl, 2),
-                            "margin": round(current_margin, 2)
-                        })
-                    except Exception as e:
-                        self.logger.warning("Heartbeat save failed", {"error": str(e)})
+                        bot_status.current_unrealized_pnl = Decimal(str(pnl))
+                        bot_status.current_margin = Decimal(str(margin))
+                        bot_status.save(update_fields=['last_heartbeat', 'current_unrealized_pnl', 'current_margin'])
+                    except:
+                        pass
                     last_heartbeat = time.time()
 
                 if self.engine.state.data.get("trade_active"):
@@ -1764,6 +1763,10 @@ class TradingApplication:
                         self._last_snapshot_time = time.time()
 
                 time.sleep(1.0)
+
+            except Exception as e:
+                self.logger.critical("MAIN LOOP ERROR", {"error": str(e)})
+                time.sleep(60)
 
         except KeyboardInterrupt:
             self.logger.info("Bot stopped by user")
@@ -1788,22 +1791,24 @@ class TradingApplication:
             if not self.engine.state.data.get("trade_active"):
                 return
             unrealized = self.engine.algo_pnl()
+            realized = self.engine.state.data.get("realized_pnl", 0.0)
+            total = unrealized + realized
             today = datetime.now(Config.TIMEZONE).date()
             with transaction.atomic():
                 daily, created = DailyPnL.objects.update_or_create(
                     user=self.user,
                     date=today,
                     defaults={
-                        'pnl': Decimal(str(unrealized)),
-                        'total_trades': len(self.engine.state.data.get("trade_symbols", [])) // 4,
-                        'win_trades': 1 if unrealized > 0 else 0,
-                        'loss_trades': 1 if unrealized < 0 else 0,
+                        'pnl': Decimal(str(total)).quantize(Decimal('0.00')),
+                        # ── IMPORTANT ── trade/win/loss stats are NOT updated here
                     }
                 )
-            self.logger.info("PERIODIC PnL SNAPSHOT SAVED", {
-                "pnl": round(unrealized, 2),
+            self.logger.info("PERIODIC SNAPSHOT SAVED", {
+                "unrealized": round(unrealized, 2),
+                "realized": round(realized, 2),
+                "total": round(total, 2),
                 "record": daily.id,
                 "created": created
             })
         except Exception as e:
-            self.logger.warning("Periodic PnL snapshot failed", {"error": str(e)})
+            self.logger.warning("Periodic snapshot failed", {"error": str(e)})
