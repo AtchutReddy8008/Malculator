@@ -30,7 +30,7 @@ class Config:
     ENTRY_START = dtime(11, 7, 0)
     ENTRY_END = dtime(11, 9, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(10, 45)
+    EXIT_TIME = dtime(15, 0)
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
     HEDGE_PREMIUM_RATIO = 0.10
