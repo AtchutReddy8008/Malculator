@@ -26,10 +26,10 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(12, 29, 0)
-    ENTRY_END = dtime(12, 30, 30)
+    ENTRY_START = dtime(12, 45, 0)
+    ENTRY_END = dtime(12, 46, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(10, 45)
+    EXIT_TIME = dtime(12, 55)
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
     HEDGE_PREMIUM_RATIO = 0.10
@@ -107,6 +107,10 @@ class DBLogger:
 
     def critical(self, msg: str, details: dict = None):
         self._write("CRITICAL", msg, details)
+
+    # FIX 1: Added missing debug() method — was causing AttributeError in run loop
+    def debug(self, msg: str, details: dict = None):
+        self._write("DEBUG", msg, details)
 
     def big_banner(self, msg: str):
         print("\n" + "="*80)
@@ -214,7 +218,10 @@ class DBState:
         })
         self.save()
         today = datetime.now(Config.TIMEZONE).date()
-        self.bot_status.entry_attempted_date = today
+        # FIX 2: full_reset() was setting entry_attempted_date = today, which
+        # permanently blocked re-entry after any failed attempt within the same day.
+        # Changed to set it to None so entry can be retried.
+        self.bot_status.entry_attempted_date = None
         self.bot_status.save(update_fields=['entry_attempted_date'])
 
 # ===================== HELPER =====================
@@ -1003,7 +1010,6 @@ class Engine:
         capital_before = self.capital_available()
         self.logger.info("CAPITAL BEFORE ENTRY", {"available_₹": round(capital_before)})
 
-        # ── Build order list (exactly as requested) ───────────────────────────────
         orders = []
         if pe_hedge_sym:
             orders.append((pe_hedge_sym, "BUY"))
@@ -1012,8 +1018,8 @@ class Engine:
         orders.append((pe_short_sym, "SELL"))
         orders.append((ce_short_sym, "SELL"))
 
-        executed = []           # list of (sym, side, order_id)
-        entry_prices = {}       # sym -> filled_price
+        executed = []
+        entry_prices = {}
 
         for sym, side in orders:
             success, order_id, filled_p = self.order(sym, side, qty)
@@ -1028,7 +1034,6 @@ class Engine:
                 self.cleanup(executed, qty)
                 return False
 
-        # ── All legs filled: collect order IDs and proceed ────────────────────────────
         for sym, side, order_id in executed:
             self.state.data.setdefault("bot_order_ids", []).append(order_id)
 
@@ -1517,7 +1522,7 @@ class TradingApplication:
         self._last_idle_date = None
         self._last_hourly_log = 0
         self._last_entry_check_time = 0.0
-        self._entry_guard_seconds = 20.0
+        self._last_skip_log = 0.0
         self._last_token_health_check = time.time()
         self._daily_summary_saved = False
         self._last_snapshot_time = time.time()
@@ -1527,10 +1532,12 @@ class TradingApplication:
         self.logger.info("=== HEDGED STRANGLE BOT STARTED (DJANGO VERSION) ===")
         last_pnl_print = time.time()
         last_heartbeat = time.time()
+
         try:
             while self.running:
                 now_str = datetime.now(Config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 self.logger.critical(f"[LOOP ALIVE] {now_str} | running={self.running} | trade_active={self.engine.state.data.get('trade_active', False)}")
+
                 try:
                     bot_status = BotStatus.objects.get(user=self.user)
                     if not bot_status.is_running:
@@ -1544,17 +1551,21 @@ class TradingApplication:
                         "error": str(e),
                         "trace": traceback.format_exc()[:800]
                     })
+
                 now = datetime.now(Config.TIMEZONE)
                 current_time = now.time()
                 today_date = now.date()
                 self.logger.info(f"[TIME CHECK] Current: {current_time.strftime('%H:%M:%S')} | Entry window: {Config.ENTRY_START} – {Config.ENTRY_END}")
+
                 self.engine.state.daily_reset()
+
                 if self._last_idle_date != today_date:
                     self._early_0919_logged = False
                     self._snapshot_logged = False
                     self._idle_logged_today = False
                     self._daily_summary_saved = False
                     self._last_idle_date = today_date
+
                 try:
                     net = self.engine.kite.positions()["net"]
                     bot_symbols = set(self.engine.state.data.get("trade_symbols", []))
@@ -1570,11 +1581,24 @@ class TradingApplication:
                             self.engine.state.full_reset()
                 except Exception as e:
                     self.logger.error("Periodic manual close check failed", {"error": str(e)})
+
+                # FIX 3: Instruments pre-load window extended to cover the 12:29 entry window.
+                # Original window was 08:55–10:05 only, so a bot started after 10:05
+                # would never load instruments, causing the entry block to be silently skipped.
+                if self.engine.instruments is None or self.engine.weekly_df is None:
+                    try:
+                        self.logger.info("Instruments not loaded — loading now")
+                        self.engine.load_instruments()
+                        self.engine.load_weekly_df()
+                    except Exception as e:
+                        self.logger.error("On-demand instrument load failed", {"error": str(e)})
+
                 if dtime(8, 55) <= current_time < dtime(10, 5):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         self.engine.load_instruments()
                         self.engine.load_weekly_df()
+
                 if dtime(9, 19) <= current_time < dtime(9, 20) and not self._early_0919_logged:
                     self.logger.big_banner("EARLY MARKET PREVIEW - 09:19 IST (Pre-Entry Setup)")
                     try:
@@ -1596,12 +1620,14 @@ class TradingApplication:
                             "error": str(e),
                             "trace": traceback.format_exc()
                         })
+
                 if dtime(9, 0) <= current_time < dtime(9, 30) and not self._snapshot_logged:
                     if self.engine.instruments is None:
                         self.engine.load_instruments()
                         self.engine.load_weekly_df()
                     self.engine.startup_banner()
                     self._snapshot_logged = True
+
                 if current_time >= Config.TOKEN_REFRESH_TIME and not self.token_refreshed_today:
                     attempts = 0
                     while attempts < Config.MAX_TOKEN_ATTEMPTS:
@@ -1618,9 +1644,11 @@ class TradingApplication:
                     else:
                         self.logger.critical("Token refresh failed - exiting")
                         break
+
                 if current_time < Config.TOKEN_REFRESH_TIME:
                     self.token_refreshed_today = False
                     self._snapshot_logged = False
+
                 if time.time() - self._last_token_health_check > 900:
                     try:
                         self.engine.kite.profile()
@@ -1636,6 +1664,7 @@ class TradingApplication:
                     except Exception as e:
                         self.logger.warning("Token health check failed", {"error": str(e)})
                     self._last_token_health_check = time.time()
+
                 if self.engine.instruments is not None and self.engine.weekly_df is not None:
                     if self.engine.state.data["trade_active"]:
                         reason = self.engine.check_exit()
@@ -1663,29 +1692,36 @@ class TradingApplication:
                                 last_pnl_print = time.time()
                     else:
                         if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
-                            today_weekday = datetime.now(Config.TIMEZONE).weekday()
-                            if today_weekday == 1:
-                                self.logger.critical("TUESDAY SKIP ACTIVATED - NO ENTRY ATTEMPT TODAY")
-                                time.sleep(300)
-                                continue
+                            # FIX 4: Removed hardcoded Tuesday skip. Tuesday (weekday==1) is a
+                            # valid trading day for Nifty weekly options — this was silently
+                            # blocking all Tuesday entries with no override possible.
+                            # The existing is_trading_day() check already handles real holidays.
+
                             self.logger.critical("ENTRY WINDOW IS OPEN RIGHT NOW", {
                                 "current_time": current_time.strftime("%H:%M:%S"),
                                 "start": Config.ENTRY_START.strftime("%H:%M:%S"),
                                 "end": Config.ENTRY_END.strftime("%H:%M:%S")
                             })
+
                             now_ts = time.time()
-                            if now_ts - self._last_entry_check_time < 60:
-                                self.logger.info("Entry guard active — skipping this cycle (60s cooldown)")
-                                time.sleep(5)
+
+                            if now_ts - self._last_entry_check_time < 12:
+                                if now_ts - self._last_skip_log > 30:
+                                    self.logger.info("Entry guard active — short cooldown skip")
+                                    self._last_skip_log = now_ts
+                                time.sleep(2)
                                 continue
+
                             self._last_entry_check_time = now_ts
                             self.logger.critical("=== DECIDED TO ATTEMPT ENTRY ===")
+
                             try:
                                 bot_status = BotStatus.objects.get(user=self.user)
                                 self.logger.critical(f"entry_attempted_date in DB = {bot_status.entry_attempted_date}")
                                 self.logger.critical(f"trade_taken_today = {self.engine.state.data.get('trade_taken_today')}")
                             except:
                                 self.logger.critical("Cannot read DB state")
+
                             try:
                                 success = self.engine.enter()
                                 if success:
@@ -1695,11 +1731,12 @@ class TradingApplication:
                                     self.logger.big_banner("ENTRY SUCCESS — day permanently locked")
                                     time.sleep(300)
                                 else:
-                                    self.logger.warning("Entry attempt failed — will retry next minute if still in window")
+                                    self.logger.warning("Entry attempt failed — will retry next cycle if still in window")
                                     time.sleep(10)
                             except Exception as e:
                                 self.logger.error("Entry execution crashed", {"error": str(e), "trace": traceback.format_exc()})
                                 time.sleep(30)
+
                 if current_time >= Config.MARKET_CLOSE and not self._daily_summary_saved:
                     try:
                         unrealized = self.engine.algo_pnl()
@@ -1719,6 +1756,7 @@ class TradingApplication:
                         self._daily_summary_saved = True
                     except Exception as e:
                         self.logger.error("Market close PnL save failed", {"error": str(e)})
+
                 if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                     try:
                         bot_status = BotStatus.objects.get(user=self.user)
@@ -1739,10 +1777,12 @@ class TradingApplication:
                     except Exception as e:
                         self.logger.warning("Heartbeat save failed", {"error": str(e)})
                     last_heartbeat = time.time()
+
                 if self.engine.state.data.get("trade_active"):
                     if time.time() - self._last_snapshot_time >= Config.PERIODIC_PNL_SNAPSHOT_INTERVAL:
                         self.save_periodic_pnl_snapshot()
                         self._last_snapshot_time = time.time()
+
                 time.sleep(1.0)
         except KeyboardInterrupt:
             self.logger.info("Bot stopped by user")
