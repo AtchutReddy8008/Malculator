@@ -27,10 +27,10 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(11, 0, 0)
-    ENTRY_END = dtime(11, 1, 30)
+    ENTRY_START = dtime(11, 10, 0)
+    ENTRY_END = dtime(11, 11, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(10, 45)
+    EXIT_TIME = dtime(11, 20)
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
     HEDGE_PREMIUM_RATIO = 0.10
@@ -108,33 +108,6 @@ class DBLogger:
 
     def critical(self, msg: str, details: dict = None):
         self._write("CRITICAL", msg, details)
-
-    def trade(self, action: str, symbol="", qty=0, price=0.0, comment=""):
-        ts = datetime.now(Config.TIMEZONE)
-        ms = ts.microsecond // 1000
-        trade_id = f"{self.user.id}_{int(ts.timestamp())}_{ms}_{symbol}"
-        status = 'EXECUTED' if "BUY" in action.upper() or "SELL" in action.upper() else 'PENDING'
-        try:
-            Trade.objects.create(
-                user=self.user,
-                trade_id=trade_id,
-                symbol=symbol,
-                quantity=qty,
-                entry_price=Decimal(str(price)),
-                entry_time=ts,
-                status=status,
-                broker='ZERODHA',
-                metadata={'action': action, 'comment': comment}
-            )
-        except Exception as e:
-            self.error(f"Trade save failed: {str(e)}")
-        self.info(f"Trade logged: {action} {symbol} {qty} @ {price}", {
-            'action': action,
-            'symbol': symbol,
-            'quantity': qty,
-            'price': price,
-            'comment': comment
-        })
 
     def big_banner(self, msg: str):
         print("\n" + "="*80)
@@ -296,9 +269,8 @@ class Engine:
 
     def _get_or_create_trade(self, symbol, side, qty, filled_price, order_id):
         """
-        FIX: Uses order_id as the unique lookup key instead of a fragile
-        multi-field match. This guarantees exactly one Trade record per
-        broker order, regardless of retries or re-polling.
+        Uses order_id as the unique lookup key — guarantees exactly ONE Trade
+        record per broker order regardless of retries or re-polling.
         Requires Trade model to have an `order_id` field (CharField, unique).
         """
         direction = 'SHORT' if side == 'SELL' else 'LONG'
@@ -306,7 +278,7 @@ class Engine:
 
         trade, created = Trade.objects.get_or_create(
             user=self.user,
-            order_id=order_id,          # ← unique key: one record per broker order
+            order_id=order_id,
             defaults={
                 "symbol": symbol,
                 "direction": direction,
@@ -627,15 +599,15 @@ class Engine:
     def order(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
         """
         Places a single order and waits for completion.
-        NOTE: Does NOT touch self.state (no appending to bot_order_ids, no save).
-              The caller is responsible for collecting order IDs and saving state,
-              especially when orders are placed concurrently.
 
-        FIX: order_id is declared OUTSIDE the retry loop so it persists across
-             attempts. Once an order is placed, retries only re-poll that SAME
-             order — never fire a duplicate. A new order is only placed if:
-               - We never got an order_id (placement itself failed), OR
-               - The order was REJECTED/CANCELLED (terminal state, safe to retry fresh).
+        KEY FIXES:
+        1. order_id declared OUTSIDE retry loop — persists across attempts so we
+           never place a duplicate order on timeout/re-poll.
+        2. self.logger.trade() REMOVED — _get_or_create_trade() is the ONLY
+           place that writes to the Trade table, using order_id as the unique key.
+           This guarantees exactly 4 Trade records (one per leg) with no duplicates.
+        3. On REJECTED/CANCELLED, order_id reset to None so a fresh order is
+           placed on the next retry (correct for terminal states).
         """
         filled_price = 0.0
         order_id = None  # ← OUTSIDE the loop: persists across retry attempts
@@ -662,13 +634,13 @@ class Engine:
                     )
                     self.logger.info(f"Order placed successfully - ID: {order_id}")
                 else:
-                    # order_id already exists — just re-poll, don't place again
+                    # order_id already exists — re-poll only, never place again
                     self.logger.info(f"Re-polling existing order (attempt {attempt+1}/{Config.MAX_RETRIES})", {
                         "order_id": order_id,
                         "symbol": symbol
                     })
 
-                # Poll for order completion (works for both fresh and existing order_id)
+                # Poll for order completion
                 start_time = time.time()
                 while time.time() - start_time < Config.ORDER_TIMEOUT:
                     history = self.kite.order_history(order_id)
@@ -684,23 +656,28 @@ class Engine:
                             self.logger.warning(f"Order completed but average_price 0 for {symbol} - using LTP fallback")
                             filled_price = self.bulk_ltp([symbol])[symbol]
 
+                        # ── Single source of truth for Trade DB record ──────────
+                        # self.logger.trade() intentionally NOT called here.
+                        # _get_or_create_trade() uses order_id as unique key,
+                        # guaranteeing exactly 4 Trade records — one per leg —
+                        # with zero duplicates even across retries.
                         self._get_or_create_trade(symbol, side, qty, filled_price, order_id)
-                        self.logger.trade(
-                            f"{side}_{symbol}",
-                            symbol,
-                            qty if side == "BUY" else -qty,
-                            filled_price,
-                            f"order_id:{order_id}"
-                        )
-                        # NOTE: bot_order_ids append and state.save() intentionally removed here.
-                        # The caller (enter or cleanup) is responsible for this after all threads complete.
+
+                        self.logger.info(f"ORDER COMPLETE: {side} {symbol} {qty} @ {filled_price}", {
+                            "order_id": order_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "filled_price": filled_price
+                        })
+                        # NOTE: bot_order_ids append and state.save() intentionally
+                        # removed here. The caller (enter) handles this after all
+                        # threads complete.
                         return True, order_id, filled_price
 
                     elif last_status in ['REJECTED', 'CANCELLED']:
                         reason = history[-1].get('status_message', 'No reason provided')
                         self.logger.critical(f"ORDER {last_status} for {symbol} - Reason: {reason}")
-                        # Terminal state — reset order_id so a genuinely fresh order
-                        # can be placed on the next retry attempt
+                        # Terminal state — reset so a fresh order is placed on next retry
                         order_id = None
                         raise Exception(f"Order {last_status}: {reason}")
 
@@ -811,7 +788,7 @@ class Engine:
                 "entry_vix": round(entry_vix, 2),
                 "total_credit": round(total_credit),
                 "remaining_days": remaining_days,
-                "daily_target_before_98%": round(today_target)
+                "daily_target_before_97%": round(today_target)
             })
         else:
             margin_for_target = self.state.data.get("final_margin_used", 0.0)
@@ -824,11 +801,11 @@ class Engine:
             self.logger.info("High VIX mode - using 2.0% of final_margin", {
                 "entry_vix": round(entry_vix, 2),
                 "final_margin": round(margin_for_target),
-                "daily_target_before_98%": round(today_target)
+                "daily_target_before_97%": round(today_target)
             })
         today_target *= 0.97
         today_target = round(today_target)
-        self.logger.info("Target adjusted to 98% of calculated", {"final_daily_target_₹": today_target})
+        self.logger.info("Target adjusted to 97% of calculated", {"final_daily_target_₹": today_target})
         self.lock_target(today_target)
 
     def preview_profit_calculation(self):
@@ -881,13 +858,13 @@ class Engine:
         remaining_days = self.calculate_trading_days_including_today(today)
         if vix_val and vix_val <= Config.VIX_THRESHOLD_FOR_PERCENT_TARGET:
             credit_based_today = net_credit_total / remaining_days if remaining_days > 0 else net_credit_total
-            projected_target = round(credit_based_today * 0.98)
+            projected_target = round(credit_based_today * 0.97)
             target_mode = "theta ÷ days"
             target_display = f"+₹{projected_target:,}"
         else:
             _, estimated_final = self.exact_margin_for_basket([dict(l, quantity=qty) for l in legs])
             capital_based_today = estimated_final * Config.PERCENT_TARGET_WHEN_VIX_HIGH
-            projected_target = round(capital_based_today * 0.98)
+            projected_target = round(capital_based_today * 0.97)
             target_mode = "2.0% of final margin"
             target_display = f"+₹{projected_target:,} (final margin ≈ ₹{round(estimated_final):,})"
         mode = "PREVIEW (ASSUMING 1 LOT)" if preview_mode else "LIVE PREVIEW"
@@ -903,9 +880,9 @@ class Engine:
         print(f" Buy PE Hedge {pe_hedge or 'N/A':5} → ₹{pe_hedge_p:.2f}")
         print(f"\nNet Credit per lot : ₹{net_credit_per_lot:.2f} × {actual_lots} lot(s) × {Config.LOT_SIZE} = ₹{net_credit_total:,.0f}")
         if vix_val and vix_val <= Config.VIX_THRESHOLD_FOR_PERCENT_TARGET:
-            print(f"Projected Daily Target (Net Credit ÷ Days × 0.98) : +₹{projected_target:,}")
+            print(f"Projected Daily Target (Net Credit ÷ Days × 0.97) : +₹{projected_target:,}")
         else:
-            print(f"Projected Daily Target (2.0% of estimated final margin × 0.98) : {target_display}")
+            print(f"Projected Daily Target (2.0% of estimated final margin × 0.97) : {target_display}")
         print("\n" + "="*80 + "\n")
 
     def startup_banner(self):
