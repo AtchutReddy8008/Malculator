@@ -4,6 +4,7 @@
 
 {% block extra_head %}
     <script src="https://cdn.canvasjs.com/canvasjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,700;0,900;1,300;1,700&display=swap" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -12,50 +13,33 @@
     :root {
         --primary: #00ff9d;
         --primary-dark: #00c978;
-        --primary-light: #40ffb5;
-        --text: #f8f9fa;
         --text-muted: #d1d5db;
-        --glow: 0 0 30px rgba(0, 255, 157, 0.3);
+        --glow: 0 0 30px rgba(0,255,157,0.3);
         --green: #00ff9d;
         --red: #ff4d4d;
         --blue: #40c0ff;
-        --card-bg: rgba(18, 18, 28, 0.52);
-        --card-border: rgba(0, 255, 157, 0.20);
     }
 
-    body, html {
-        background: transparent !important;
-    }
+    body, html { background: transparent !important; }
+    #chartContainer { display: none; }
 
-    #chartContainer {
-        display: none;
-    }
-
-    /* Ticker - compact & elegant */
+    /* ── TICKER ── */
     .ticker-container {
         position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 2.8rem;
-        background: rgba(0, 0, 0, 0.45);
+        bottom: 0; left: 0;
+        width: 100%; height: 2.8rem;
+        background: rgba(0,0,0,0.45);
         backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border-top: 1px solid rgba(0, 255, 157, 0.18);
+        border-top: 1px solid rgba(0,255,157,0.18);
         z-index: 999;
         overflow: hidden;
     }
-
     .ticker-wrapper {
         display: inline-flex;
         white-space: nowrap;
         animation: ticker 140s linear infinite;
     }
-
-    .ticker-container:hover .ticker-wrapper {
-        animation-play-state: paused;
-    }
-
+    .ticker-container:hover .ticker-wrapper { animation-play-state: paused; }
     .ticker-item {
         display: inline-flex;
         align-items: center;
@@ -64,103 +48,238 @@
         font-size: 0.95rem;
         color: #e5e7eb;
     }
-
-    .ticker-symbol {
-        font-weight: 700;
-        color: white;
-        min-width: 80px;
-    }
-
-    .ticker-price {
-        color: white;
-        font-weight: 600;
-        min-width: 95px;
-    }
-
+    .ticker-symbol { font-weight: 700; color: white; min-width: 80px; }
+    .ticker-price  { color: white; font-weight: 600; min-width: 95px; }
     .ticker-change.up   { color: var(--green); font-weight: 600; }
     .ticker-change.down { color: var(--red);   font-weight: 600; }
-
     @keyframes ticker {
         0%   { transform: translateX(0); }
         100% { transform: translateX(-50%); }
     }
 
-    /* Hero - balanced & elegant */
+    /* ══════════════════════════════════════
+       HERO
+    ══════════════════════════════════════ */
     .hero {
         position: relative;
         z-index: 10;
         text-align: center;
-        padding: 20vh 1.5rem 16vh;
+        padding: 18vh 1.5rem 14vh;
         background: transparent;
     }
 
-    .hero h1 {
-        font-size: clamp(3.4rem, 9vw, 5.8rem);
-        font-weight: 800;
-        line-height: 1.1;
-        margin: 0 0 1.1rem;
-        background: linear-gradient(90deg, #ffffff, var(--primary), #ffffff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-shadow: 0 4px 30px rgba(0, 255, 157, 0.4);
+    /* full-screen thin dark veil */
+    .hero::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.24);
+        z-index: -1;
+        pointer-events: none;
     }
 
-    .tagline {
-        font-size: clamp(1.15rem, 3.5vw, 1.45rem);
-        max-width: 860px;
-        margin: 0 auto 3.5rem;
-        color: var(--text-muted);
-        line-height: 1.6;
+    /* ── title ── */
+    .hero-title {
+        font-family: 'Playfair Display', Georgia, serif;
+        line-height: 1.10;
+        margin: 0 0 1.5rem;
+    }
+    .hero-line-1 {
+        display: block;
+        color: #ffffff;
+        font-size: clamp(2.4rem, 5.5vw, 4.4rem);
+        font-weight: 700;
+        text-shadow: 0 2px 32px rgba(0,0,0,0.55);
+    }
+    .hero-line-2 {
+        display: block;
+        color: var(--primary);
+        font-size: clamp(3.2rem, 8.5vw, 6.6rem);
+        font-weight: 900;
+        letter-spacing: -2px;
+        text-shadow:
+            0 0 50px rgba(0,255,157,0.45),
+            0 0 100px rgba(0,255,157,0.15),
+            0 2px 32px rgba(0,0,0,0.5);
+        margin: 0.05rem 0;
+    }
+    .hero-line-3 {
+        display: block;
+        color: #ffffff;
+        font-size: clamp(1.8rem, 4vw, 3.4rem);
+        font-weight: 300;
+        font-style: italic;
+        letter-spacing: 0.06em;
+        opacity: 0.88;
+        text-shadow: 0 2px 32px rgba(0,0,0,0.55);
+        margin-top: 0.2rem;
+    }
+
+    /* ── tagline ── */
+    .hero-tagline {
+        font-family: 'Inter', sans-serif;
+        font-size: clamp(1rem, 2.2vw, 1.18rem);
+        color: rgba(210,218,228,0.88);
+        line-height: 1.75;
+        max-width: 660px;
+        margin: 0 auto 2rem;
         font-weight: 400;
     }
 
-    .btn {
-        padding: 0.9rem 2.2rem;
-        font-size: 1.05rem;
-        font-weight: 600;
-        border-radius: 50px;
-        transition: all 0.35s ease;
-        margin: 0 0.9rem;
-        text-decoration: none;
-        backdrop-filter: blur(10px);
-        border: none;
-    }
-
-    .btn-primary {
-        background: rgba(0, 255, 157, 0.85);
-        color: #0f172a;
-        box-shadow: var(--glow);
-    }
-
-    .btn-primary:hover {
-        background: #00e89c;
-        transform: translateY(-3px);
-        box-shadow: 0 0 40px rgba(0,255,157,0.7);
-    }
-
-    .btn-outline {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.35);
-        color: white;
-    }
-
-    .btn-outline:hover {
-        background: rgba(255,255,255,0.18);
-        color: white;
-    }
-
-    .stats {
-        margin-top: 4rem;
-        font-size: 1.05rem;
-        color: rgba(255,255,255,0.82);
+    /* ── pill tags ── */
+    .hero-pills {
         display: flex;
         justify-content: center;
         flex-wrap: wrap;
-        gap: 2.5rem;
-        font-weight: 500;
+        gap: 9px;
+        margin-bottom: 2.6rem;
+    }
+    .hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 16px;
+        border-radius: 99px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.815rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        border: 1px solid rgba(0,255,157,0.26);
+        background: rgba(0,255,157,0.07);
+        color: rgba(0,255,157,0.88);
+        backdrop-filter: blur(8px);
+        transition: all 0.22s ease;
+        cursor: default;
+        user-select: none;
+    }
+    .hero-pill:hover {
+        background: rgba(0,255,157,0.13);
+        border-color: rgba(0,255,157,0.52);
+        color: var(--primary);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(0,255,157,0.16);
+    }
+    .pill-dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--primary);
+        opacity: 0.72;
+        flex-shrink: 0;
     }
 
-    /* Content section */
+    /* ── CTA buttons ── */
+    .hero-cta {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 13px;
+        margin-bottom: 3.8rem;
+    }
+    .btn-hero-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 13px 34px;
+        font-family: 'Inter', sans-serif;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        border-radius: 50px;
+        text-decoration: none;
+        background: var(--primary);
+        color: #041509;
+        border: none;
+        box-shadow: 0 0 28px rgba(0,255,157,0.32);
+        transition: all 0.26s ease;
+        cursor: pointer;
+    }
+    .btn-hero-primary:hover {
+        background: #00e891;
+        color: #041509;
+        transform: translateY(-2px);
+        box-shadow: 0 0 44px rgba(0,255,157,0.56);
+    }
+    .btn-hero-outline {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 12px 30px;
+        font-family: 'Inter', sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: 50px;
+        text-decoration: none;
+        background: rgba(255,255,255,0.06);
+        color: rgba(255,255,255,0.88);
+        border: 1px solid rgba(255,255,255,0.28);
+        backdrop-filter: blur(10px);
+        transition: all 0.26s ease;
+        cursor: pointer;
+    }
+    .btn-hero-outline:hover {
+        background: rgba(255,255,255,0.12);
+        border-color: rgba(255,255,255,0.52);
+        color: #fff;
+        transform: translateY(-2px);
+    }
+
+    /* ── stat strip ── */
+    .hero-stats {
+        display: flex;
+        justify-content: center;
+        align-items: stretch;
+        flex-wrap: wrap;
+        max-width: 600px;
+        margin: 0 auto;
+        border: 1px solid rgba(0,255,157,0.16);
+        border-radius: 16px;
+        background: rgba(6,11,9,0.55);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        overflow: hidden;
+    }
+    .hero-stat {
+        flex: 1 1 150px;
+        padding: 22px 20px;
+        text-align: center;
+        position: relative;
+    }
+    .hero-stat + .hero-stat::before {
+        content: "";
+        position: absolute;
+        left: 0; top: 18%; bottom: 18%;
+        width: 1px;
+        background: rgba(0,255,157,0.13);
+    }
+    .hero-stat-value {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 1.9rem;
+        font-weight: 700;
+        color: var(--primary);
+        line-height: 1;
+        margin-bottom: 6px;
+        letter-spacing: -0.5px;
+        animation: statReveal 0.65s ease both;
+    }
+    .hero-stat:nth-child(2) .hero-stat-value { animation-delay: 0.12s; }
+    .hero-stat:nth-child(3) .hero-stat-value { animation-delay: 0.24s; }
+    @keyframes statReveal {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .hero-stat-label {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.775rem;
+        color: rgba(185,198,210,0.62);
+        font-weight: 500;
+        letter-spacing: 0.25px;
+        line-height: 1.35;
+    }
+
+    /* ══════════════════════════════════════
+       CONTENT BELOW
+    ══════════════════════════════════════ */
     .content-below {
         position: relative;
         z-index: 10;
@@ -168,10 +287,10 @@
         padding: 3rem 1rem 8rem;
     }
 
-    /* Stat cards - cleaner look */
+    /* stat cards */
     .stat-card {
-        background: rgba(20, 20, 30, 0.48);
-        border: 1px solid rgba(0, 255, 157, 0.22);
+        background: rgba(20,20,30,0.48);
+        border: 1px solid rgba(0,255,157,0.22);
         border-radius: 16px;
         backdrop-filter: blur(14px);
         transition: all 0.35s ease;
@@ -183,89 +302,56 @@
         flex-direction: column;
         justify-content: center;
     }
+    .stat-card:hover { transform: translateY(-8px); border-color: var(--primary); box-shadow: 0 20px 40px rgba(0,0,0,0.35); }
+    .stat-card h3 { color: var(--primary); font-size: 1.45rem; margin-bottom: 0.8rem; font-weight: 600; }
+    .stat-card p  { color: var(--text-muted); font-size: 0.98rem; margin: 0; }
 
-    .stat-card:hover {
-        transform: translateY(-8px);
-        border-color: var(--primary);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.35);
-    }
-
-    .stat-card h3 {
-        color: var(--primary);
-        font-size: 1.45rem;
-        margin-bottom: 0.8rem;
-        font-weight: 600;
-    }
-
-    .stat-card p {
-        color: var(--text-muted);
-        font-size: 0.98rem;
-        margin: 0;
-    }
-
-    /* Strategy carousel */
+    /* carousel */
     .strategy-carousel {
         background: transparent;
         border: 1px solid rgba(0,255,157,0.15);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+        font-size: 0;
     }
-
     .cards-wrapper {
         display: flex;
-        transition: transform 0.7s ease;
+        flex-wrap: nowrap;
+        width: 100%;
+        transition: transform 0.7s cubic-bezier(0.4,0,0.2,1);
+        will-change: transform;
+        margin: 0; padding: 0; gap: 0;
     }
-
     .strategy-card {
-        flex: 0 0 100%;
-        background: rgba(18, 18, 28, 0.62);
-        border-right: 1px solid rgba(255,255,255,0.07);
+        flex: 0 0 100%; width: 100%; min-width: 100%;
+        font-size: 1rem;
+        background: rgba(18,18,28,0.62);
         backdrop-filter: blur(14px);
         padding: 2.6rem 2.2rem;
         min-height: 260px;
         color: white;
         text-align: center;
+        margin: 0; border: none;
+        box-sizing: border-box;
     }
-
-    .strategy-card h3 {
-        color: var(--primary);
-        font-size: 1.65rem;
-        margin-bottom: 1rem;
-        font-weight: 600;
-    }
-
-    .strategy-card p {
-        color: var(--text-muted);
-        font-size: 1rem;
-        margin: 0.6rem 0;
-    }
-
-    .strategy-card .price {
-        font-size: 2.1rem;
-        font-weight: 800;
-        color: white;
-        margin: 1rem 0;
-        letter-spacing: -0.5px;
-    }
-
+    .strategy-card h3 { color: var(--primary); font-size: 1.65rem; margin-bottom: 1rem; font-weight: 600; }
+    .strategy-card p  { color: var(--text-muted); font-size: 1rem; margin: 0.6rem 0; }
+    .strategy-card .price { display: block; font-size: 2.1rem; font-weight: 800; color: white; margin: 1rem 0; letter-spacing: -0.5px; }
     .strategy-card .change.up   { color: var(--green); font-weight: 600; }
     .strategy-card .change.down { color: var(--red);   font-weight: 600; }
 
-    /* Final CTA card */
+    /* final cta */
     .final-cta {
-        background: rgba(18, 18, 28, 0.62);
+        background: rgba(18,18,28,0.62);
         border: 1px solid rgba(0,255,157,0.22);
         backdrop-filter: blur(14px);
         border-radius: 16px;
         color: white;
     }
 
-    /* NEW: Why Choose section */
-    .why-choose {
-        margin: 6rem 0 4rem;
-    }
-
+    /* why choose */
+    .why-choose { margin: 6rem 0 4rem; }
     .why-choose h2 {
         text-align: center;
         font-size: clamp(2.2rem, 6vw, 3.2rem);
@@ -274,18 +360,15 @@
         background: linear-gradient(90deg, #ffffff, var(--primary), #ffffff);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 0 4px 25px rgba(0, 255, 157, 0.35);
     }
-
     .feature-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 4rem;
     }
-
     .feature-card {
-        background: rgba(20, 20, 30, 0.48);
-        border: 1px solid rgba(0, 255, 157, 0.22);
+        background: rgba(20,20,30,0.48);
+        border: 1px solid rgba(0,255,157,0.22);
         border-radius: 16px;
         backdrop-filter: blur(14px);
         transition: all 0.35s ease;
@@ -293,59 +376,42 @@
         text-align: center;
         color: white;
         min-height: 220px;
-        min-width:440px
+        min-width: 440px;
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
+    .feature-card:hover { transform: translateY(-8px); border-color: var(--primary); box-shadow: 0 20px 40px rgba(0,0,0,0.35); }
+    .feature-card i  { font-size: 2.8rem; margin-bottom: 1.2rem; }
+    .feature-card h3 { color: var(--primary); font-size: 1.4rem; margin-bottom: 1rem; font-weight: 600; }
+    .feature-card p  { color: var(--text-muted); font-size: 0.98rem; margin: 0; line-height: 1.5; }
 
-    .feature-card:hover {
-        transform: translateY(-8px);
-        border-color: var(--primary);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.35);
-    }
-
-    .feature-card i {
-        font-size: 2.8rem;
-        margin-bottom: 1.2rem;
-    }
-
-    .feature-card h3 {
-        color: var(--primary);
-        font-size: 1.4rem;
-        margin-bottom: 1rem;
-        font-weight: 600;
-    }
-
-    .feature-card p {
-        color: var(--text-muted);
-        font-size: 0.98rem;
-        margin: 2;
-        line-height: 1.5;
-    }
-
-    /* Responsive */
+    /* responsive */
     @media (max-width: 992px) {
-        .hero { padding: 18vh 1rem 14vh; }
-        .hero h1 { font-size: clamp(2.8rem, 10vw, 4.8rem); }
+        .hero { padding: 16vh 1rem 12vh; }
+        .hero-line-1 { font-size: clamp(2rem, 7vw, 3.4rem); }
+        .hero-line-2 { font-size: clamp(2.8rem, 10vw, 5.2rem); }
+        .hero-line-3 { font-size: clamp(1.6rem, 5.5vw, 2.8rem); }
     }
-
     @media (max-width: 768px) {
-        .hero h1 { font-size: clamp(2.6rem, 11vw, 4.2rem); }
-        .tagline { font-size: 1.1rem; }
-        .btn { padding: 0.8rem 1.8rem; font-size: 0.98rem; margin: 0.5rem; }
-        .stats { gap: 1.8rem; font-size: 0.95rem; }
-        .strategy-card { padding: 2rem 1.6rem; min-height: 240px; }
-        .strategy-card h3 { font-size: 1.4rem; }
-        .strategy-card .price { font-size: 1.9rem; }
-        .why-choose h2 { font-size: 2.4rem; margin-bottom: 2.5rem; }
-        .feature-card { min-height: 200px; padding: 1.8rem 1.4rem; }
+        .hero-line-1 { font-size: clamp(1.9rem, 8.5vw, 3rem); }
+        .hero-line-2 { font-size: clamp(2.4rem, 11vw, 4.4rem); letter-spacing: -1px; }
+        .hero-line-3 { font-size: clamp(1.4rem, 6.5vw, 2.4rem); }
+        .hero-tagline { font-size: 1rem; }
+        .hero-stats { max-width: 100%; border-radius: 12px; }
+        .hero-stat-value { font-size: 1.6rem; }
+        .btn-hero-primary, .btn-hero-outline { padding: 11px 24px; font-size: 0.95rem; }
+        .feature-card { min-width: unset; padding: 2rem 1.4rem; }
     }
-
+    @media (max-width: 480px) {
+        .hero-stat { padding: 16px 12px; }
+        .hero-stat-value { font-size: 1.38rem; }
+        .hero-stat-label { font-size: 0.71rem; }
+        .hero-pill { font-size: 0.76rem; padding: 5px 12px; }
+    }
     @media (prefers-reduced-motion: reduce) {
-        .ticker-wrapper, .cards-wrapper {
-            animation: none !important;
-        }
+        .ticker-wrapper, .cards-wrapper { animation: none !important; }
+        .hero-stat-value { animation: none; }
     }
 </style>
 
@@ -372,49 +438,69 @@
     </div>
 </div>
 
-<!-- Hero -->
+<!-- ══════════ HERO ══════════ -->
 <div class="hero">
-    <h1>
-        Trade Smarter<br>
-        <span style="color: var(--primary);">with Algorithms</span>
+
+    <h1 class="hero-title">
+        <span class="hero-line-1">Trade Smarter with</span>
+        <span class="hero-line-2">Algorithms</span>
+        <span class="hero-line-3">Not Emotions</span>
     </h1>
 
-    <p class="tagline">
-        Leave emotions behind.<br>
-        Professional algo strategies for <strong>NIFTY</strong>, <strong>BankNIFTY</strong> & <strong>Crypto</strong>.<br>
-        Discipline-driven • Risk-managed • Consistently profitable.
+    <p class="hero-tagline">
+        Professional algorithmic trading strategies for Nifty, BankNifty &amp; Crypto.<br>
+        Discipline-driven, risk-managed, and consistently profitable.
     </p>
 
-    {% if not user.is_authenticated %}
-        <div style="margin: 3.5rem 0;">
-            <a href="{% url 'signup' %}" class="btn btn-primary">
-                <i class="fas fa-rocket me-2"></i> Start Free Trial
-            </a>
-            <a href="{% url 'login' %}" class="btn btn-outline">
-                <i class="fas fa-sign-in-alt me-2"></i> Login
-            </a>
-        </div>
-    {% else %}
-        <div style="margin: 3.5rem 0;">
-            <a href="{% url 'dashboard' %}" class="btn btn-primary">
-                <i class="fas fa-tachometer-alt me-2"></i> Open Dashboard
-            </a>
-            <a href="{% url 'algorithms' %}" class="btn btn-outline">
-                <i class="fas fa-robot me-2"></i> Activate Algo
-            </a>
-        </div>
-    {% endif %}
-
-    <div class="stats">
-        <span>Proven Performance</span>
-        <span>Fully Automated</span>
-        <span>Capital Protection</span>
+    <!-- pills -->
+    <div class="hero-pills">
+        <span class="hero-pill"><span class="pill-dot"></span>Options</span>
+        <span class="hero-pill"><span class="pill-dot"></span>Futures</span>
+        <span class="hero-pill"><span class="pill-dot"></span>Algo Trading</span>
+        <span class="hero-pill"><span class="pill-dot"></span>Risk Managed</span>
     </div>
+
+    <!-- CTA -->
+    <div class="hero-cta">
+        {% if not user.is_authenticated %}
+            <a href="{% url 'signup' %}" class="btn-hero-primary">
+                <i class="fas fa-rocket"></i> Get Started
+            </a>
+            <a href="{% url 'strategies_list' %}" class="btn-hero-outline">
+                <i class="fas fa-brain"></i> View Algorithms
+            </a>
+        {% else %}
+            <a href="{% url 'dashboard' %}" class="btn-hero-primary">
+                <i class="fas fa-tachometer-alt"></i> Open Dashboard
+            </a>
+            <a href="{% url 'algorithms' %}" class="btn-hero-outline">
+                <i class="fas fa-robot"></i> Activate Algo
+            </a>
+        {% endif %}
+    </div>
+
+    <!-- stat strip -->
+    <div class="hero-stats">
+        <div class="hero-stat">
+            <div class="hero-stat-value">12–15%</div>
+            <div class="hero-stat-label">Avg. Monthly Returns</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-value">1–2%</div>
+            <div class="hero-stat-label">Risk Per Trade</div>
+        </div>
+        <div class="hero-stat">
+            <div class="hero-stat-value">5+</div>
+            <div class="hero-stat-label">Active Strategies</div>
+        </div>
+    </div>
+
 </div>
 
-<!-- Main Content -->
+<!-- ══════════ MAIN CONTENT ══════════ -->
 <div class="content-below">
     <div class="container">
+
         <div class="strategy-carousel">
             <div class="cards-wrapper">
                 <div class="strategy-card">
@@ -422,26 +508,22 @@
                     <p>Recommended Strike</p>
                     <span class="price">25,800 CE</span>
                     <p>Weekly Expiry</p>
-                </div>
-                <div class="strategy-card">
+                </div><div class="strategy-card">
                     <h3>NIFTY Sell</h3>
                     <p>Current Level</p>
                     <span class="price">25,642.80</span>
                     <p class="change up">+0.32% today</p>
-                </div>
-                <div class="strategy-card">
+                </div><div class="strategy-card">
                     <h3>BTC USD</h3>
                     <p>Live Price</p>
                     <span class="price">$69,174.18</span>
                     <p class="change up">+1.41% (24h)</p>
-                </div>
-                <div class="strategy-card">
+                </div><div class="strategy-card">
                     <h3>XAU USD</h3>
                     <p>Spot Gold</p>
                     <span class="price">$4,961.15</span>
                     <p class="change up">+3.99%</p>
-                </div>
-                <div class="strategy-card">
+                </div><div class="strategy-card">
                     <h3>Short Strangle</h3>
                     <p>Neutral Options Strategy</p>
                     <p>Sell OTM Call + Put</p>
@@ -453,67 +535,61 @@
         <div class="row mt-5 g-4">
             <div class="col-md-4">
                 <div class="stat-card">
-                    <i class="fas fa-robot fa-3x mb-3" style="color: var(--primary);"></i>
+                    <i class="fas fa-robot fa-3x mb-3" style="color:var(--primary);"></i>
                     <h3>Fully Automated</h3>
                     <p>Runs during market hours — no manual intervention needed.</p>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="stat-card">
-                    <i class="fas fa-shield-alt fa-3x mb-3" style="color: var(--green);"></i>
+                    <i class="fas fa-shield-alt fa-3x mb-3" style="color:var(--green);"></i>
                     <h3>Capital Protection</h3>
                     <p>Smart risk controls built to safeguard your account.</p>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="stat-card">
-                    <i class="fas fa-chart-line fa-3x mb-3" style="color: var(--blue);"></i>
+                    <i class="fas fa-chart-line fa-3x mb-3" style="color:var(--blue);"></i>
                     <h3>Live Monitoring</h3>
                     <p>Real-time dashboard with full performance visibility.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Why Choose Trade with Naman? -->
+        <!-- Why Choose -->
         <div class="why-choose">
             <h2>Why Choose Trade with Naman?</h2>
-            <p class="text-center text-muted mb-5" style="font-size: 1.15rem; max-width: 720px; margin: 0 auto;">
+            <p class="text-center text-muted mb-5" style="font-size:1.1rem; max-width:720px; margin:0 auto;">
                 Professional-grade algorithmic trading made accessible for everyone
             </p>
-
             <div class="feature-grid">
                 <div class="feature-card">
-                    <i class="fas fa-robot" style="color: var(--primary);"></i>
+                    <i class="fas fa-robot" style="color:var(--primary);"></i>
                     <h3>Fully Automated</h3>
                     <p>Set it and forget it. Our algorithms execute trades 24/7 without manual intervention.</p>
                 </div>
-
                 <div class="feature-card">
-                    <i class="fas fa-database" style="color: var(--primary);"></i>
+                    <i class="fas fa-database" style="color:var(--primary);"></i>
                     <h3>Data-Driven</h3>
                     <p>Every strategy is backtested with years of historical data for consistent performance.</p>
                 </div>
-
                 <div class="feature-card">
-                    <i class="fas fa-shield-alt" style="color: var(--green);"></i>
+                    <i class="fas fa-shield-alt" style="color:var(--green);"></i>
                     <h3>Risk Managed</h3>
                     <p>Strict stop-losses and position sizing ensure capital preservation.</p>
                 </div>
-
                 <div class="feature-card">
-                    <i class="fas fa-bolt" style="color: var(--blue);"></i>
+                    <i class="fas fa-bolt" style="color:var(--blue);"></i>
                     <h3>Real-Time Execution</h3>
                     <p>Lightning-fast order execution with minimal slippage on Zerodha & Binance.</p>
                 </div>
-
                 <div class="feature-card">
-                    <i class="fas fa-layer-group" style="color: var(--primary);"></i>
+                    <i class="fas fa-layer-group" style="color:var(--primary);"></i>
                     <h3>Multiple Strategies</h3>
                     <p>Diversify across Nifty, BankNifty, and crypto for balanced returns.</p>
                 </div>
-
                 <div class="feature-card">
-                    <i class="fas fa-trophy" style="color: var(--green);"></i>
+                    <i class="fas fa-trophy" style="color:var(--green);"></i>
                     <h3>Proven Track Record</h3>
                     <p>Consistent monthly returns with transparent P&L reporting.</p>
                 </div>
@@ -525,39 +601,38 @@
                 <div class="final-cta text-center py-5">
                     {% if not user.is_authenticated %}
                         <h4 class="mb-4">Ready to Get Started?</h4>
-                        <a href="{% url 'signup' %}" class="btn btn-primary btn-lg px-5 py-3">
-                            <i class="fas fa-rocket me-2"></i> Create Free Account Now
+                        <a href="{% url 'signup' %}" class="btn-hero-primary"
+                           style="display:inline-flex; font-size:1.05rem; padding:14px 40px;">
+                            <i class="fas fa-rocket"></i> Create Free Account Now
                         </a>
-                        <p class="mt-3" style="color: var(--text-muted);">
+                        <p class="mt-3" style="color:var(--text-muted);">
                             Takes less than 60 seconds • No credit card required
                         </p>
                     {% else %}
                         <h4 class="mb-4">Continue Your Journey</h4>
-                        <a href="{% url 'dashboard' %}" class="btn btn-primary btn-lg px-5 py-3">
-                            <i class="fas fa-tachometer-alt me-2"></i> Go to Dashboard
+                        <a href="{% url 'dashboard' %}" class="btn-hero-primary"
+                           style="display:inline-flex; font-size:1.05rem; padding:14px 40px;">
+                            <i class="fas fa-tachometer-alt"></i> Go to Dashboard
                         </a>
                     {% endif %}
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
 <script>
-// Strategy cards carousel
-(function() {
+(function () {
     const wrapper = document.querySelector('.cards-wrapper');
     if (!wrapper) return;
-
-    const cards = document.querySelectorAll('.strategy-card');
-    let currentIndex = 0;
-
-    function slideNext() {
-        currentIndex = (currentIndex + 1) % cards.length;
-        wrapper.style.transform = `translateX(-${currentIndex * 100}%)`;
-    }
-
-    setInterval(slideNext, 3800);
+    const cards = wrapper.querySelectorAll('.strategy-card');
+    if (!cards.length) return;
+    let idx = 0;
+    setInterval(function () {
+        idx = (idx + 1) % cards.length;
+        wrapper.style.transform = 'translateX(-' + (idx * 100) + '%)';
+    }, 3800);
 })();
 </script>
 

@@ -1,0 +1,581 @@
+{% extends 'base.html' %}
+
+{% block title %}Login / Sign Up - Trade with Naman{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --g: #00ff9d;
+        --g2: #00c97a;
+        --glow: rgba(0,255,157,0.28);
+        --red: #ff4d6d;
+        --blue: #38bdf8;
+        --glass: rgba(8,14,11,0.65);
+        --border: rgba(0,255,157,0.13);
+    }
+
+    /* ── page ── */
+    .auth-page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 110px 1.5rem 90px;
+        position: relative;
+        z-index: 10;
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    .auth-page::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.34);
+        z-index: -2;
+        pointer-events: none;
+    }
+
+    /* grain */
+    .auth-page::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+        background-size: 180px;
+        z-index: -1;
+        pointer-events: none;
+        opacity: 0.5;
+    }
+
+    /* ── logo / eyebrow ── */
+    .auth-eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 2rem;
+    }
+
+    .auth-logo-badge {
+        width: 42px; height: 42px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #00e589, #009e5e);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem;
+        box-shadow: 0 0 22px rgba(0,255,157,0.35);
+        flex-shrink: 0;
+    }
+
+    .auth-site-name {
+        font-family: 'Syne', sans-serif;
+        font-size: 1rem;
+        font-weight: 700;
+        color: rgba(220,240,230,0.75);
+        letter-spacing: 0.3px;
+    }
+
+    /* ── card ── */
+    .auth-card {
+        width: 100%;
+        max-width: 480px;
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        background: var(--glass);
+        backdrop-filter: blur(30px);
+        -webkit-backdrop-filter: blur(30px);
+        box-shadow:
+            0 40px 90px rgba(0,0,0,0.65),
+            0 0 0 1px rgba(255,255,255,0.04),
+            inset 0 1px 0 rgba(255,255,255,0.05);
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* ambient glow blob */
+    .auth-card::before {
+        content: "";
+        position: absolute;
+        width: 280px; height: 280px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(0,255,157,0.09) 0%, transparent 70%);
+        bottom: -80px; right: -60px;
+        pointer-events: none;
+    }
+
+    /* ── tab bar ── */
+    .tab-bar {
+        display: flex;
+        padding: 0 2rem;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+        position: relative;
+        z-index: 5;
+        margin-bottom: 0;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 18px 0 16px;
+        background: transparent;
+        border: none;
+        font-family: 'Syne', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        color: rgba(140,165,155,0.50);
+        cursor: pointer;
+        position: relative;
+        transition: color 0.24s ease;
+    }
+
+    .tab-btn::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: 20%; right: 20%;
+        height: 2px;
+        background: var(--g);
+        border-radius: 99px;
+        transform: scaleX(0);
+        transition: transform 0.32s cubic-bezier(0.77,0,0.18,1), box-shadow 0.32s;
+    }
+
+    .tab-btn.active {
+        color: #fff;
+    }
+    .tab-btn.active::after {
+        transform: scaleX(1);
+        box-shadow: 0 0 14px rgba(0,255,157,0.6);
+    }
+
+    /* ── form slides ── */
+    .form-slides {
+        position: relative;
+    }
+
+    .form-slide {
+        padding: 2.4rem 2.2rem 2.6rem;
+        transition: opacity 0.30s ease, transform 0.36s cubic-bezier(0.77,0,0.18,1);
+    }
+
+    .form-slide.hidden {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(24px);
+    }
+
+    .form-slide.hidden.from-left {
+        transform: translateX(-24px);
+    }
+
+    /* ── slide headings ── */
+    .slide-title {
+        font-family: 'Syne', sans-serif;
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.8px;
+        line-height: 1.15;
+        margin-bottom: 5px;
+    }
+
+    .slide-sub {
+        font-size: 0.875rem;
+        color: rgba(160,185,175,0.58);
+        margin-bottom: 2rem;
+        font-weight: 400;
+        line-height: 1.5;
+    }
+
+    /* ── fields ── */
+    .field {
+        margin-bottom: 1.1rem;
+        position: relative;
+    }
+
+    .field label {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: rgba(0,255,157,0.58);
+        margin-bottom: 6px;
+    }
+
+    .field-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .fi {
+        position: absolute;
+        left: 14px;
+        font-size: 0.82rem;
+        color: rgba(0,255,157,0.32);
+        pointer-events: none;
+        transition: color 0.22s;
+        z-index: 2;
+    }
+
+    .field input {
+        width: 100%;
+        padding: 12px 14px 12px 38px;
+        border-radius: 11px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #e4f0ec;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.905rem;
+        outline: none;
+        transition: all 0.22s ease;
+    }
+
+    .field input::placeholder { color: rgba(255,255,255,0.20); }
+
+    .field input:focus {
+        border-color: rgba(0,255,157,0.42);
+        background: rgba(0,255,157,0.055);
+        box-shadow: 0 0 0 3px rgba(0,255,157,0.09);
+        color: #fff;
+    }
+
+    .field-wrap:focus-within .fi { color: var(--g); }
+
+    .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .field-error {
+        font-size: 0.72rem;
+        color: var(--red);
+        margin-top: 3px;
+        display: block;
+    }
+
+    /* ── auth alert ── */
+    .auth-alert {
+        background: rgba(255,77,109,0.09);
+        border: 1px solid rgba(255,77,109,0.22);
+        border-radius: 10px;
+        color: #ffaaaa;
+        font-size: 0.83rem;
+        padding: 10px 13px;
+        margin-bottom: 1.3rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* ── submit ── */
+    .btn-submit {
+        width: 100%;
+        padding: 13px;
+        border-radius: 12px;
+        border: none;
+        cursor: pointer;
+        font-family: 'Syne', sans-serif;
+        font-size: 0.96rem;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        transition: all 0.26s ease;
+        margin-top: 1.3rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* shimmer sweep */
+    .btn-submit::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.14) 50%, transparent 70%);
+        transform: translateX(-120%);
+        transition: transform 0.52s ease;
+    }
+    .btn-submit:hover::before { transform: translateX(120%); }
+
+    .btn-login {
+        background: var(--g);
+        color: #041509;
+        box-shadow: 0 0 26px rgba(0,255,157,0.26);
+    }
+    .btn-login:hover {
+        background: #00e891;
+        transform: translateY(-2px);
+        box-shadow: 0 0 42px rgba(0,255,157,0.48);
+    }
+
+    .btn-signup {
+        background: linear-gradient(115deg, #00ff9d 0%, #38bdf8 100%);
+        color: #031410;
+        box-shadow: 0 0 26px rgba(56,189,248,0.20);
+    }
+    .btn-signup:hover {
+        filter: brightness(1.07);
+        transform: translateY(-2px);
+        box-shadow: 0 0 42px rgba(56,189,248,0.38);
+    }
+
+    /* ── divider ── */
+    .or-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 1.2rem 0 0.9rem;
+        font-size: 0.76rem;
+        color: rgba(130,155,145,0.38);
+    }
+    .or-row::before, .or-row::after {
+        content: ""; flex: 1;
+        height: 1px;
+        background: rgba(255,255,255,0.07);
+    }
+
+    /* ── switch link ── */
+    .switch-link {
+        text-align: center;
+        font-size: 0.84rem;
+        color: rgba(150,175,165,0.52);
+        margin: 0;
+    }
+    .switch-link .sw {
+        color: var(--g);
+        font-weight: 600;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .switch-link .sw:hover { color: #fff; }
+
+    /* ── footer note ── */
+    .auth-footnote {
+        margin-top: 1.4rem;
+        font-size: 0.78rem;
+        color: rgba(130,150,145,0.40);
+        text-align: center;
+        max-width: 380px;
+    }
+
+    /* ── responsive ── */
+    @media (max-width: 520px) {
+        .auth-card { border-radius: 20px; }
+        .form-slide { padding: 2rem 1.5rem 2.2rem; }
+        .tab-bar { padding: 0 1.5rem; }
+        .slide-title { font-size: 1.45rem; }
+        .field-row { grid-template-columns: 1fr; gap: 0; }
+    }
+</style>
+
+<div class="auth-page">
+
+    <!-- eyebrow -->
+    <div class="auth-eyebrow">
+        <div class="auth-logo-badge">
+            <i class="fas fa-chart-line" style="color:#041509;"></i>
+        </div>
+        <span class="auth-site-name">Trade with Naman</span>
+    </div>
+
+    <!-- card -->
+    <div class="auth-card">
+
+        <!-- tabs -->
+        <div class="tab-bar">
+            <button class="tab-btn active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+            <button class="tab-btn" id="tabSignup" onclick="switchTab('signup')">Create Account</button>
+        </div>
+
+        <div class="form-slides">
+
+            <!-- ── LOGIN ── -->
+            <div class="form-slide" id="slideLogin">
+                <p class="slide-title">Welcome back 👋</p>
+                <p class="slide-sub">Sign in to your trading dashboard</p>
+
+                {% if messages %}
+                    {% for message in messages %}
+                    <div class="auth-alert">
+                        <i class="fas fa-circle-exclamation"></i> {{ message }}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post" action="{% url 'login' %}">
+                    {% csrf_token %}
+
+                    <div class="field">
+                        <label>Username</label>
+                        <div class="field-wrap">
+                            <input type="text" name="username" placeholder="your_username"
+                                   required autofocus autocomplete="username">
+                            <span class="fi"><i class="fas fa-at"></i></span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Password</label>
+                        <div class="field-wrap">
+                            <input type="password" name="password" placeholder="••••••••"
+                                   required autocomplete="current-password">
+                            <span class="fi"><i class="fas fa-lock"></i></span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-submit btn-login">
+                        <i class="fas fa-arrow-right-to-bracket"></i> Let me in
+                    </button>
+                </form>
+
+                <div class="or-row">or</div>
+                <p class="switch-link">
+                    No account yet? <span class="sw" onclick="switchTab('signup')">Sign up free →</span>
+                </p>
+            </div>
+
+            <!-- ── SIGNUP ── -->
+            <div class="form-slide hidden from-left" id="slideSignup">
+                <p class="slide-title">Join the algo game 🚀</p>
+                <p class="slide-sub">Takes under 60 seconds · no card needed</p>
+
+                <form method="post" action="{% url 'signup' %}">
+                    {% csrf_token %}
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Username *</label>
+                            <div class="field-wrap">
+                                <input type="text" name="username" placeholder="username"
+                                       required autocomplete="username">
+                                <span class="fi"><i class="fas fa-at"></i></span>
+                            </div>
+                            {% if form.username.errors %}
+                                <span class="field-error">{{ form.username.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="field">
+                            <label>Email *</label>
+                            <div class="field-wrap">
+                                <input type="email" name="email" placeholder="you@email.com"
+                                       required autocomplete="email">
+                                <span class="fi"><i class="fas fa-envelope"></i></span>
+                            </div>
+                            {% if form.email.errors %}
+                                <span class="field-error">{{ form.email.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Password *</label>
+                            <div class="field-wrap">
+                                <input type="password" name="password1" placeholder="min 8 chars"
+                                       required autocomplete="new-password">
+                                <span class="fi"><i class="fas fa-lock"></i></span>
+                            </div>
+                            {% if form.password1.errors %}
+                                <span class="field-error">{{ form.password1.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="field">
+                            <label>Confirm *</label>
+                            <div class="field-wrap">
+                                <input type="password" name="password2" placeholder="repeat it"
+                                       required autocomplete="new-password">
+                                <span class="fi"><i class="fas fa-lock"></i></span>
+                            </div>
+                            {% if form.password2.errors %}
+                                <span class="field-error">{{ form.password2.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Full Name</label>
+                            <div class="field-wrap">
+                                <input type="text" name="full_name" placeholder="Your Name"
+                                       autocomplete="name">
+                                <span class="fi"><i class="fas fa-user"></i></span>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>Mobile</label>
+                            <div class="field-wrap">
+                                <input type="tel" name="mobile_number" placeholder="+91 98765 43210"
+                                       autocomplete="tel">
+                                <span class="fi"><i class="fas fa-mobile-screen"></i></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-submit btn-signup">
+                        <i class="fas fa-rocket"></i> Start Trading Now
+                    </button>
+                </form>
+
+                <div class="or-row">or</div>
+                <p class="switch-link">
+                    Already have an account? <span class="sw" onclick="switchTab('login')">Sign in →</span>
+                </p>
+            </div>
+
+        </div><!-- /form-slides -->
+    </div><!-- /auth-card -->
+
+    <p class="auth-footnote">
+        By continuing you agree to our Terms of Service &amp; Privacy Policy.
+    </p>
+
+</div>
+
+<script>
+    function switchTab(tab) {
+        const sl = document.getElementById('slideLogin');
+        const ss = document.getElementById('slideSignup');
+        const tl = document.getElementById('tabLogin');
+        const ts = document.getElementById('tabSignup');
+
+        if (tab === 'signup') {
+            sl.classList.add('hidden', 'from-left');
+            ss.classList.remove('hidden', 'from-left');
+            tl.classList.remove('active');
+            ts.classList.add('active');
+        } else {
+            ss.classList.add('hidden');
+            ss.classList.remove('from-left');
+            ss.classList.add('from-left');
+            sl.classList.remove('hidden', 'from-left');
+            ts.classList.remove('active');
+            tl.classList.add('active');
+        }
+    }
+
+    // Auto-switch via ?mode=signup
+    if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
+        switchTab('signup');
+    }
+
+    // Icon focus lighting
+    document.querySelectorAll('.field input').forEach(input => {
+        const wrap = input.closest('.field-wrap');
+        const icon = wrap && wrap.querySelector('.fi');
+        if (!icon) return;
+        input.addEventListener('focus', () => icon.style.color = 'var(--g)');
+        input.addEventListener('blur',  () => icon.style.color = 'rgba(0,255,157,0.32)');
+    });
+</script>
+
+{% endblock %}

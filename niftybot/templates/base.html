@@ -337,8 +337,8 @@
                         </li>
                     {% else %}
                         <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
-                        <li class="nav-item"><a class="nav-link nav-auth-btn px-3 mx-lg-2" href="{% url 'login' %}">Login</a></li>
-                        <li class="nav-item"><a class="nav-link btn btn-primary text-black px-4 ms-lg-2" href="{% url 'signup' %}" style="color: #000 !important;">Sign Up</a></li>
+                        <li class="nav-item"><a class="nav-link nav-auth-btn px-3 mx-lg-2" href="{% url 'auth' %}?mode=login">Login</a></li>
+                        {% comment %} <li class="nav-item"><a class="nav-link btn btn-primary text-black px-4 ms-lg-2" href="{% url 'signup' %}" style="color: #000 !important;">Sign Up</a></li> {% endcomment %}
                     {% endif %}
                 </ul>
             </div>
@@ -472,3 +472,4 @@
     {% block extra_js %}{% endblock %}
 </body>
 </html>
+

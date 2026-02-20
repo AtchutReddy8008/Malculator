@@ -7017,3 +7017,5 @@ INFO 2026-02-20 12:57:54,548 auth [AUTH SUCCESS] Access token generated & saved 
 WARNING 2026-02-20 12:58:17,022 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
 INFO 2026-02-20 12:58:29,875 tasks [user:hp] [f336ca4d-c079-44f9-95d3-c469540718ee] Task cleanup complete — bot marked stopped
 INFO 2026-02-20 12:58:29,927 tasks [user:hp] [16073e26-549c-44c0-9136-48efedb95890] Task cleanup complete — bot marked stopped
+WARNING 2026-02-20 20:52:30,078 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+WARNING 2026-02-20 23:08:22,027 tasks [SIGNAL] Received signal 2 — exiting worker gracefully

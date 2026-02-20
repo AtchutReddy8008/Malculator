@@ -1,1091 +1,475 @@
-{% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Short Strangle - NIFTY Trading Bot{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NIFTY Trading Algo{% endblock %}</title>
+   
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+   
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+   
+    {% block extra_head %}{% endblock %}
 
-{% block extra_css %}
-<style>
-    :root {
-        --bg: #0f121a;
-        --surface: rgba(20, 25, 35, 0.85);
-        --surface-hover: rgba(30, 40, 55, 0.9);
-        --border: rgba(100, 120, 180, 0.18);
-        --text: #f1f5f9;
-        --text-light: #e5efff;
-        --text-muted: #cbd5e1;
-        --primary: #5e8cff;
-        --success: #34d399;
-        --danger: #ff6b6b;
-        --warning: #ffca6b;
-        --glow: rgba(94, 140, 255, 0.15);
-    }
-
-    body {
-        background: var(--bg);
-        color: var(--text);
-    }
-
-    h1, h5, h6 {
-        color: var(--text-light);
-    }
-
-    .card {
-        background: var(--surface);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        overflow: hidden;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.35);
-        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-    }
-
-    .card:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 20px 60px rgba(0,0,0,0.45);
-    }
-
-    .card-header {
-        background: linear-gradient(135deg, rgba(20,25,35,0.9), rgba(30,40,55,0.9));
-        border-bottom: none;
-        padding: 1.3rem 1.6rem;
-        font-weight: 600;
-        color: var(--text-light);
-    }
-
-    .card-body, .card-body * {
-        color: var(--text-light) !important;
-    }
-
-    .text-muted, small, .text-muted * {
-        color: var(--text-muted) !important;
-    }
-
-    .btn-lg {
-        padding: 0.75rem 1.6rem;
-        font-weight: 600;
-        border-radius: 12px;
-        transition: all 0.35s ease;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        color: white !important;
-    }
-
-    .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.6rem;
-        padding: 0.45rem 1rem;
-        border-radius: 50px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        color: white;
-    }
-
-    .status-running {
-        background: rgba(52, 211, 153, 0.25);
-        border: 1px solid rgba(52, 211, 153, 0.6);
-        color: white;
-    }
-
-    .status-stopped {
-        background: rgba(248, 113, 113, 0.25);
-        border: 1px solid rgba(248, 113, 113, 0.6);
-        color: white;
-    }
-
-    .stat-card-sm {
-        background: rgba(30, 40, 55, 0.7);
-        border-radius: 12px;
-        padding: 1rem 1.2rem;
-        text-align: center;
-        border: 1px solid rgba(94,140,255,0.15);
-        transition: all 0.3s ease;
-        color: white;
-    }
-
-    .stat-card-sm:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.25);
-    }
-
-    .stat-card-sm .value {
-        font-size: 1.45rem;
-        font-weight: 700;
-        color: white;
-    }
-
-    .stat-card-sm .label {
-        color: var(--text-muted);
-        font-size: 0.82rem;
-        margin-top: 0.35rem;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-    }
-
-    .log-entry {
-        padding: 0.9rem 1.1rem;
-        border-radius: 10px;
-        margin-bottom: 0.8rem;
-        background: rgba(30,40,55,0.5);
-        border-left: 4px solid;
-        transition: all 0.25s ease;
-        color: white;
-    }
-
-    .log-entry:hover {
-        background: rgba(40,50,70,0.7);
-    }
-
-    .log-info    { border-left-color: #5e8cff; }
-    .log-warning { border-left-color: var(--warning); }
-    .log-error,
-    .log-critical { border-left-color: var(--danger); }
-
-    .log-entry .badge {
-        color: white !important;
-    }
-
-    .market-status {
-        background: rgba(20,25,35,0.7);
-        border-radius: 12px;
-        padding: 1rem;
-        border: 1px solid rgba(94,140,255,0.12);
-        color: white;
-    }
-
-    .market-status strong {
-        color: white;
-    }
-
-    .alert {
-        border-radius: 12px;
-        border-left-width: 5px;
-        border-left-style: solid;
-        color: white;
-    }
-
-    .alert-info {
-        background: rgba(94,140,255,0.12);
-        border-left-color: var(--primary);
-    }
-
-    .alert-warning {
-        background: rgba(255,202,107,0.12);
-        border-left-color: var(--warning);
-    }
-
-    .alert-danger {
-        background: rgba(255,107,107,0.12);
-        border-left-color: var(--danger);
-    }
-
-    .alert-secondary {
-        background: rgba(100,120,180,0.12);
-        border-left-color: #6b7280;
-    }
-
-    .table th, .table td {
-        color: white !important;
-    }
-
-    .table-sm th {
-        color: var(--text-muted) !important;
-    }
-
-    .list-group-item {
-        background: transparent;
-        border: none;
-        color: white;
-    }
-
-    .text-success, .text-danger {
-        color: inherit !important;
-    }
-
-    /* Short Strangle Animation Styles */
-    .strangle-leg {
-        transition: all 0.6s ease;
-    }
-
-    .strike-label {
-        text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-    }
-
-    #price-marker {
-        animation: pulse 2s infinite ease-in-out;
-    }
-
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50%      { transform: scale(1.18); }
-    }
-
-    /* Toast Notification */
-    .toast-container {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1050;
-    }
-
-    .toast {
-        min-width: 300px;
-    }
-
-    /* Restricted Access Card for non-staff */
-    .restricted-access-card {
-        background: rgba(30, 40, 55, 0.9);
-        border: 2px solid rgba(94, 140, 255, 0.4);
-        border-radius: 16px;
-        padding: 2.5rem 1.8rem;
-        text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        margin: 2rem 0;
-    }
-
-    .restricted-access-card i {
-        font-size: 3.5rem;
-        color: var(--primary);
-        margin-bottom: 1.2rem;
-    }
-
-    .restricted-access-card h4 {
-        color: var(--text-light);
-        margin-bottom: 1rem;
-    }
-
-    .restricted-access-card p {
-        font-size: 1.1rem;
-        color: var(--text-muted);
-        margin-bottom: 1.5rem;
-    }
-
-    .restricted-access-card .contact-number {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: var(--success);
-        background: rgba(52, 211, 153, 0.12);
-        padding: 0.6rem 1.4rem;
-        border-radius: 12px;
-        display: inline-block;
-        cursor: pointer;
-        user-select: all;
-    }
-
-    /* Mobile adjustments */
-    @media (max-width: 767px) {
-        .card-body {
-            padding: 1.5rem;
+    <style>
+        :root {
+            --primary: #00ff9d;
+            --primary-dim: rgba(0, 255, 157, 0.1);
+            --primary-glow: rgba(0, 255, 157, 0.4);
+            --danger: #ff4d4d;
+            --accent: #40c0ff;
+            --bg-dark: #050505;
+            --glass-bg: rgba(20, 20, 20, 0.55);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --font-ui: 'Inter', sans-serif;
+            --font-num: 'JetBrains Mono', monospace;
         }
-        h1 {
-            font-size: 2rem;
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: var(--bg-dark);
+            color: #e0e0e0;
+            font-family: var(--font-ui);
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: 40px;
         }
-        .restricted-access-card {
-            padding: 2rem 1.5rem;
+
+        /* ================= FULLSCREEN BACKGROUND VIDEO - MAX CLARITY ================= */
+        #bg-video {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            transform: translateX(-50%) translateY(-50%);
+            z-index: -2;
+            object-fit: cover;
+            opacity: 0.85;
+            filter: brightness(1.05) contrast(1.1);
+            background-color: #050505;
         }
-        .stat-card-sm .value {
-            font-size: 1.25rem;
+
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(5, 5, 5, 0.15), rgba(5, 5, 5, 0.35));
+            z-index: -1;
+            pointer-events: none;
         }
-    }
 
-    .loading {
-        opacity: 0.6;
-        pointer-events: none;
-        position: relative;
-    }
+        .navbar,
+        .main-container,
+        .ticker-container,
+        .footer {
+            position: relative;
+            z-index: 10;
+        }
 
-    .loading::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 24px;
-        height: 24px;
-        border: 3px solid var(--primary);
-        border-top-color: transparent;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        transform: translate(-50%, -50%);
-    }
+        .font-num { font-family: var(--font-num); }
+        .text-green { color: var(--primary) !important; }
+        .text-red { color: var(--danger) !important; }
+       
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
 
-    @keyframes spin {
-        to { transform: translate(-50%, -50%) rotate(360deg); }
-    }
-</style>
-{% endblock %}
+        .navbar {
+            background: rgba(5, 5, 5, 0.65);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 0.5rem 0;                    /* smaller vertical padding */
+            height: 82px;                         /* ← FIXED NAVBAR HEIGHT */
+            min-height: unset !important;
+            z-index: 1000;
+        }
 
-{% block content %}
-<div class="container-fluid py-4">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mb-5"><i class="fas fa-robot me-3" style="color:var(--primary)"></i> Short Strangle Control</h1>
-        </div>
-    </div>
+        .navbar-brand {
+            padding: 0 !important;
+            margin: 0 !important;
+            height: 100%;
+            display: flex;
+            align-items: center;
+        }
 
-    <div class="row g-4">
-        <!-- Main Control Panel -->
-        <div class="col-lg-8">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-cogs me-2"></i> Algorithm Control Panel</h5>
-                    <div class="status-indicator status-{% if bot_status.is_running %}running{% else %}stopped{% endif %}" id="status-indicator">
-                        <i class="fas fa-circle fa-xs"></i>
-                        {{ bot_status.is_running|yesno:"RUNNING,STOPPED" }}
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="row g-4">
-                        <!-- Left Column -->
-                        <div class="col-md-6">
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Current Status</h6>
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="status-indicator status-{% if bot_status.is_running %}running{% else %}stopped{% endif %} px-3 py-2" id="status-active">
-                                        <i class="fas fa-power-off me-2"></i>
-                                        {{ bot_status.is_running|yesno:"Active,Inactive" }}
-                                    </div>
-                                    <div class="ms-3">
-                                        <small id="status-time">
-                                            {% if bot_status.is_running %}
-                                                Started {{ bot_status.last_started|timesince }} ago
-                                            {% else %}
-                                                Stopped {{ bot_status.last_stopped|timesince }} ago
-                                            {% endif %}
-                                        </small>
-                                    </div>
+        .brand-logo {
+            height: 200px;                        /* ← YOU CAN CHANGE THIS FREELY (bigger = more overflow) */
+            width: auto;
+            margin-top: 42px;                    /* ← negative margin = logo overflows downward */
+            filter: drop-shadow(0 0 6px rgba(0, 255, 157, 0.4));
+            transition: transform 0.25s ease, filter 0.25s ease;
+        }
+
+        .navbar-brand:hover .brand-logo {
+            transform: scale(1.06);
+            filter: drop-shadow(0 0 12px rgba(0, 255, 157, 0.7));
+        }
+
+        .navbar-nav .nav-link {
+            color: #ccc !important;
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin: 0 4px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-nav .nav-link:hover,
+        .navbar-nav .nav-link.active {
+            color: #fff !important;
+            background: var(--primary-dim);
+        }
+
+        .nav-auth-btn {
+            border: 1px solid var(--primary) !important;
+            color: var(--primary) !important;
+            background: transparent;
+        }
+
+        .dropdown-menu {
+            background: #0f0f0f;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+        }
+       
+        .dropdown-item { color: #ccc; transition: 0.2s; }
+        .dropdown-item:hover { background: var(--primary-dim); color: var(--primary); }
+
+        .main-container {
+            flex: 1;
+            margin-top: 90px;                     /* ← increased slightly to prevent overlap with bigger logo */
+            margin-bottom: 60px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .card {
+            background: rgba(15, 15, 15, 0.58);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #000;
+            border: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+       
+        .btn-primary:hover {
+            background: #00cc7d;
+            box-shadow: 0 0 15px var(--primary-glow);
+            transform: translateY(-1px);
+        }
+
+        /* ───────────────────────────────────────────────
+           TICKER - FIXED BOTTOM, SMOOTH INFINITE SCROLL
+        ─────────────────────────────────────────────── */
+        .ticker-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            background: rgba(8, 8, 12, 0.94);
+            backdrop-filter: blur(14px);
+            border-top: 1px solid rgba(0, 255, 157, 0.28);
+            z-index: 9999;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .ticker-wrapper {
+            display: flex;
+            white-space: nowrap;
+            animation: scroll 45s linear infinite;
+            will-change: transform;
+            min-width: 200%;
+        }
+
+        .ticker-item {
+            padding: 0 60px;
+            font-family: var(--font-num);
+            font-size: 0.95rem;
+            color: #f0f0f5;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+
+        @keyframes scroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* ───────────────────────────────────────────────
+           SIGNATURE BLOCK - NAME BASELINE ALIGNED WITH LINKEDIN LOGO BOTTOM
+        ─────────────────────────────────────────────── */
+        .signature-block {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .crafted-by {
+            color: #888;
+            font-size: 1rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .name-highlight {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 12px;
+            font-family: var(--font-ui);
+            font-weight: 900;
+            font-size: 1.2rem;
+            letter-spacing: -1px;
+            background: linear-gradient(
+                90deg,
+                #00ff9d, #40c0ff, #ff4d4d, #ffd700, #9f7aea, #00ff9d
+            );
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-decoration: none;
+            animation: colorFlow 10s ease infinite;
+            transition: all 0.4s ease;
+        }
+
+        .name-highlight:hover {
+            transform: scale(1.06);
+            filter: brightness(1.4) drop-shadow(0 0 20px rgba(255,255,255,0.6));
+        }
+
+        .linkedin-icon {
+            font-size: 2.4rem;
+            vertical-align: text-bottom;
+            margin-top: -6px;
+            background: linear-gradient(
+                90deg,
+                #00ff9d, #40c0ff, #ff4d4d, #ffd700, #9f7aea, #00ff9d
+            );
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: colorFlow 10s ease infinite;
+        }
+
+        @keyframes colorFlow {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @media (max-width: 576px) {
+            .brand-logo {
+                height: 90px;                   /* smaller on mobile */
+                margin-top: -18px;
+            }
+            .main-container {
+                margin-top: 80px;
+            }
+            .navbar {
+                height: 70px;
+            }
+        }
+
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    <!-- Background video -->
+    <video id="bg-video" autoplay muted loop playsinline preload="auto">
+        <source src="{% static 'bgvideo.mp4' %}" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'home' %}">
+                <img src="{% static 'logo2.png' %}" 
+                     alt="Trade with Naman" 
+                     class="brand-logo">
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto align-items-center">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i> Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'broker' %}"><i class="fas fa-database me-1"></i> Broker credentials</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'pnl_calendar' %}"><i class="fas fa-calendar-alt me-1"></i> Portfolio</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'strategies_list' %}"><i class="fas fa-brain me-1"></i> Strategies</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'about' %}"><i class="fas fa-info-circle me-1"></i> About Us</a></li>
+                        <li class="nav-item dropdown ms-lg-3">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
+                                <div class="bg-dark border border-secondary rounded-circle d-flex justify-content-center align-items-center me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-user text-muted small"></i>
                                 </div>
-                                <small id="heartbeat-age" class="text-muted d-block">
-                                    Last heartbeat: calculating...
-                                </small>
-                            </div>
-
-                            <!-- Today's Target & Stop-Loss (Live Updating) -->
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Today's Target & Stop-Loss <small class="text-muted">(Live)</small></h6>
-                                <div class="row g-3">
-                                    <div class="col-6">
-                                        <div class="stat-card-sm loading" id="target-card">
-                                            <div class="value text-success" id="daily-target">
-                                                {% if bot_status.daily_profit_target and bot_status.daily_profit_target != 0 %}
-                                                    ₹{{ bot_status.daily_profit_target|floatformat:0 }}
-                                                {% else %}
-                                                    ---
-                                                {% endif %}
-                                            </div>
-                                            <div class="label">Profit Target</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card-sm loading" id="stop-card">
-                                            <div class="value text-danger" id="daily-stop">
-                                                {% if bot_status.daily_stop_loss and bot_status.daily_stop_loss != 0 %}
-                                                    ₹{{ bot_status.daily_stop_loss|floatformat:0 }}
-                                                {% else %}
-                                                    ---
-                                                {% endif %}
-                                            </div>
-                                            <div class="label">Stop Loss</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <small class="text-muted mt-2 d-block">
-                                    Automatically calculated on entry/adjustment. Resets daily.
-                                </small>
-                            </div>
-
-                            <!-- Max Lots Hard Cap Control -->
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Max Lots Hard Cap (Each lot ≈ ₹1.2–1.5 lakh)</h6>
-                                <div class="input-group">
-                                    <input type="number" 
-                                           class="form-control bg-dark text-white border-secondary" 
-                                           id="max-lots-input" 
-                                           value="{{ bot_status.max_lots_hard_cap|default:1 }}" 
-                                           min="1" max="10" step="1">
-                                    <button class="btn btn-outline-primary" type="button" id="save-max-lots">
-                                        <i class="fas fa-save me-1"></i> Save
-                                    </button>
-                                </div>
-                                <small class="text-muted d-block mt-2">
-                                    Limits maximum lots the bot can use (1 = safest). Applies only to your account.
-                                </small>
-                            </div>
-
-                            <!-- Live PnL Display -->
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Live Unrealized P&L</h6>
-                                <div class="stat-card-sm text-center" id="pnl-card">
-                                    <div class="value {% if bot_status.current_unrealized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}" id="current-pnl">
-                                        ₹{{ bot_status.current_unrealized_pnl|floatformat:2|default:"0.00" }}
-                                    </div>
-                                    <div class="label">Current Position P&L</div>
-                                </div>
-                            </div>
-
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Performance Snapshot</h6>
-                                <div class="row g-3">
-                                    <div class="col-6">
-                                        <div class="stat-card-sm">
-                                            <div class="value">{{ performance.total_trades|default:"0" }}</div>
-                                            <div class="label">Total Trades</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card-sm">
-                                            <div class="value">{{ performance.win_rate|default:"0" }}%</div>
-                                            <div class="label">Win Rate</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card-sm">
-                                            <div class="value">₹{{ performance.avg_daily_pnl|default:"0.00" }}</div>
-                                            <div class="label">Avg Daily P&L</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="stat-card-sm">
-                                            <div class="value">{{ performance.current_streak|default:"0" }}</div>
-                                            <div class="label">Win Streak</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Right Column - Controls + Strangle Animation -->
-                        <div class="col-md-6">
-                            <div class="mb-4">
-                                <h6 class="text-muted mb-3">Controls</h6>
-
-                                {% if user.is_staff %}
-                                    <div class="d-grid gap-3">
-                                        <button id="toggle-bot-btn" 
-                                                class="btn {% if bot_status.is_running %}btn-danger{% else %}btn-success{% endif %} btn-lg w-100">
-                                            <i class="fas {% if bot_status.is_running %}fa-power-off{% else %}fa-play{% endif %} me-2"></i>
-                                            {% if bot_status.is_running %}Stop Algorithm{% else %}Start Algorithm{% endif %}
-                                        </button>
-                                    </div>
-                                    <div class="mt-3 text-center">
-                                        <small class="text-muted">
-                                            <i class="far fa-clock me-1"></i>
-                                            Auto-runs during market hours (Mon, Wed–Fri)
-                                        </small>
-                                    </div>
-                                {% else %}
-                                    <div class="restricted-access-card">
-                                        <i class="fas fa-lock fa-3x"></i>
-                                        <h4>Algorithm Control Restricted</h4>
-                                        <p>
-                                            Only staff users can start or stop the trading algorithm.<br>
-                                            To request access or start trading, please contact the admin:
-                                        </p>
-                                        <div class="contact-number">
-                                            7674983016
-                                        </div>
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <!-- Short Strangle Live Visualization -->
-                            <div class="mt-4 pt-2">
-                                <h6 class="text-muted mb-3 text-center">Current Strangle Position (Live)</h6>
-                                
-                                <div class="position-relative" style="height: 160px; max-width: 380px; margin: 0 auto;">
-                                    <div style="position: absolute; top: 80px; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.18);"></div>
-                                    
-                                    <div id="current-price-label" 
-                                         style="position: absolute; top: 55px; left: 50%; transform: translateX(-50%);
-                                                background: rgba(30,40,55,0.9); color: #a5b4fc; padding: 0.4rem 1rem;
-                                                border-radius: 10px; font-size: 1rem; font-weight: 600; white-space: nowrap;
-                                                border: 1px solid rgba(165,180,252,0.3); box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
-                                        NIFTY ≈ <span id="live-nifty">---</span>
-                                    </div>
-
-                                    <div class="strangle-leg call-leg"
-                                         style="position: absolute; top: 10px; width: 140px; height: 60px; right: 20px; 
-                                                border: 2px dashed #ff6b6b; border-radius: 12px 12px 0 0; border-bottom: none;
-                                                background: linear-gradient(to bottom, rgba(255,107,107,0.08), transparent);
-                                                box-shadow: 0 4px 16px rgba(255,107,107,0.15);">
-                                        <div style="position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
-                                                    color: #ff6b6b; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">
-                                            Short Call • Sell
-                                        </div>
-                                        <div id="call-strike" class="strike-label" 
-                                             style="position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-                                                    color: #fda4af; font-weight: 700; font-size: 1.25rem;">
-                                            ---
-                                        </div>
-                                    </div>
-
-                                    <div class="strangle-leg put-leg"
-                                         style="position: absolute; bottom: 10px; width: 140px; height: 60px; left: 20px; 
-                                                border: 2px dashed #34d399; border-radius: 0 0 12px 12px; border-top: none;
-                                                background: linear-gradient(to top, rgba(52,211,153,0.08), transparent);
-                                                box-shadow: 0 4px 16px rgba(52,211,153,0.15);">
-                                        <div style="position: absolute; bottom: -26px; left: 50%; transform: translateX(-50%);
-                                                    color: #34d399; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">
-                                            Short Put • Sell
-                                        </div>
-                                        <div id="put-strike" class="strike-label"
-                                             style="position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
-                                                    color: #6ee7b7; font-weight: 700; font-size: 1.25rem;">
-                                            ---
-                                        </div>
-                                    </div>
-
-                                    <div id="price-marker" 
-                                         style="position: absolute; top: 72px; width: 20px; height: 20px; margin-left: -10px;
-                                                background: #a5b4fc; border-radius: 50%; border: 3px solid #6366f1;
-                                                box-shadow: 0 0 18px rgba(99,102,241,0.7), 0 0 0 8px rgba(99,102,241,0.2);
-                                                transition: left 1.8s ease-out;">
-                                    </div>
-                                </div>
-
-                                <div class="text-center mt-3">
-                                    <small class="text-muted" style="font-size: 0.9rem;">
-                                        Current position: <strong id="strangle-status">No active position</strong>
-                                    </small>
-                                </div>
-                            </div>
-
-                            {% if bot_status.last_error %}
-                                <div class="alert alert-danger mt-4">
-                                    <h6 class="mb-2"><i class="fas fa-exclamation-triangle me-2"></i> Last Error</h6>
-                                    <pre class="mb-0 bg-transparent border-0 text-white font-monospace" style="font-size: 0.88rem; white-space: pre-wrap;" id="last-error">{{ bot_status.last_error|truncatechars:320 }}</pre>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Algorithm Details -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i> Algorithm Details</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row g-4">
-                        <div class="col-md-6">
-                            <table class="table table-borderless table-sm mb-0">
-                                <tbody>
-                                    <tr>
-                                        <th class="text-muted">Name</th>
-                                        <td class="fw-medium">{{ algorithm.name }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Version</th>
-                                        <td>{{ algorithm.version }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Underlying</th>
-                                        <td class="fw-medium">{{ algorithm.underlying }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Lot Size</th>
-                                        <td>{{ algorithm.lot_size }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Max Lots</th>
-                                        <td>{{ algorithm.max_lots }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <table class="table table-borderless table-sm mb-0">
-                                <tbody>
-                                    <tr>
-                                        <th class="text-muted">Entry Window</th>
-                                        <td>{{ algorithm.entry_window }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Exit Time</th>
-                                        <td>{{ algorithm.exit_time }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Strategy Type</th>
-                                        <td>{{ algorithm.strategy_type }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Risk Level</th>
-                                        <td>{{ algorithm.risk_level }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-muted">Expected Returns</th>
-                                        <td>{{ algorithm.expected_returns }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <hr class="my-4 bg-secondary bg-opacity-25">
-
-                    <div class="alert alert-info border-0 bg-info bg-opacity-10">
-                        <h6 class="mb-2"><i class="fas fa-lightbulb me-2"></i> Trading Tips</h6>
-                        <ul class="mb-0 small">
-                            <li>Algorithm active Mon, Wed, Thu, Fri</li>
-                            <li>No trading on Tuesdays & expiry days</li>
-                            <li>Auto exit at 3:00 PM IST</li>
-                            <li>Stop loss = daily target amount</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Logs -->
-            <div class="card mt-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-terminal me-2"></i> Recent Logs</h5>
-                    <small class="text-muted">Last 50 entries</small>
-                </div>
-                <div class="card-body p-0" style="max-height: 340px; overflow-y: auto;" id="logs-container">
-                    {% if recent_logs %}
-                        {% for log in recent_logs %}
-                            <div class="log-entry log-{{ log.level|lower }}">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div class="d-flex align-items-center">
-                                        <span class="badge me-3
-                                            {% if log.level == 'INFO' %}bg-info
-                                            {% elif log.level == 'WARNING' %}bg-warning text-dark
-                                            {% elif log.level == 'ERROR' %}bg-danger
-                                            {% elif log.level == 'CRITICAL' %}bg-dark{% endif %}">
-                                            {{ log.level }}
-                                        </span>
-                                        <div>{{ log.message }}</div>
-                                    </div>
-                                    <small class="text-muted ms-3 flex-shrink-0">
-                                        {{ log.timestamp|date:"H:i:s" }}
-                                    </small>
-                                </div>
-                            </div>
-                        {% endfor %}
+                                {{ user.username }}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                                <form method="post" action="{% url 'logout' %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger"><i class="fas fa-sign-out-alt me-2"></i> Logout</button>
+                                </form>
+                            </ul>
+                        </li>
                     {% else %}
-                        <div class="text-center py-5 text-muted">
-                            <i class="fas fa-history fa-2x mb-3 opacity-50"></i>
-                            <p>No recent logs available</p>
-                        </div>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
+                        <li class="nav-item"><a class="nav-link nav-auth-btn px-3 mx-lg-2" href="{% url 'auth' %}?mode=login">Login</a></li>
+                        {% comment %} <li class="nav-item"><a class="nav-link btn btn-primary text-black px-4 ms-lg-2" href="{% url 'signup' %}" style="color: #000 !important;">Sign Up</a></li> {% endcomment %}
                     {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container main-container">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow" role="alert">
+                    <i class="fas fa-info-circle me-2"></i> {{ message }}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="row">
+                <!-- Left side - content -->
+                <div class="col-lg-8 mb-5 mb-lg-0">
+                    <div class="row">
+                        <!-- Brand & Description -->
+                        <div class="col-md-4 mb-4 mb-md-0">
+                            <h6>Trade with Naman</h6>
+                            <p class="footer-desc">
+                                Professional algorithmic trading solutions for the Indian stock market.<br>
+                                Trade smarter with our risk-managed strategies.
+                            </p>
+                        </div>
+
+                        <!-- Quick Links -->
+                        <div class="col-md-2 mb-4 mb-md-0">
+                            <h6>Quick Links</h6>
+                            <a href="{% url 'home' %}">Home</a>
+                            <a href="{% url 'strategies_list' %}">Algorithms</a>
+                            <a href="{% url 'pnl_calendar' %}">Portfolio</a>
+                            <a href="{% url 'about' %}">About Us</a>
+                        </div>
+
+                        <!-- Legal -->
+                        <div class="col-md-3 mb-4 mb-md-0">
+                            <h6>Legal</h6>
+                            Terms & Conditions
+                            Privacy Policy
+                            Risk Disclosure
+                            Refund Policy
+                        </div>
+
+                        <!-- Contact Us -->
+                        <div class="col-md-3">
+                            <h6>Contact Us</h6>
+                            +91 7674983016
+                            tradewithnaman09@gmail.com
+                            <span>India</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right side - signature with baseline-aligned LinkedIn logo -->
+                <div class="col-lg-4 text-center text-lg-end">
+                    <div class="signature-block">
+                        <div class="crafted-by mb-2">
+                            Designed & Built by <i class="fas fa-heart text-red"></i>
+                        </div>
+                        <a href="https://www.linkedin.com/in/atchut-reddy-8008ar/" 
+                           target="_blank" 
+                           class="name-highlight">
+                            ATCHUT REDDY
+                            <i class="fab fa-linkedin-in linkedin-icon"></i>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
+    </footer>
 
-        <!-- Sidebar -->
-        <div class="col-lg-4">
-            <!-- Performance Statistics -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Performance Statistics</h5>
-                </div>
-                <div class="card-body">
-                    {% if performance.best_day %}
-                        <div class="mb-4">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <strong>Best Day</strong>
-                                <div class="text-end">
-                                    <div class="fw-bold text-success">₹{{ performance.best_day.pnl|floatformat:2 }}</div>
-                                    <small>{{ performance.best_day.date }}</small>
-                                </div>
-                            </div>
-                        </div>
-                    {% endif %}
-
-                    {% if performance.worst_day %}
-                        <div class="mb-4">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <strong>BAD Day</strong>
-                                <div class="text-end">
-                                    <div class="fw-bold text-danger">₹{{ performance.worst_day.pnl|floatformat:2 }}</div>
-                                    <small>{{ performance.worst_day.date }}</small>
-                                </div>
-                            </div>
-                        </div>
-                    {% endif %}
-
-                    <div class="alert alert-info border-0 bg-info bg-opacity-10">
-                        <h6 class="mb-2"><i class="fas fa-lightbulb me-2"></i> Trading Tips</h6>
-                        <ul class="mb-0 small">
-                            <li>Algorithm active Mon, Wed, Thu, Fri</li>
-                            <li>No trading on Tuesdays & expiry days</li>
-                            <li>Auto exit at 3:00 PM IST</li>
-                            <li>Stop loss = daily target amount</li>
-                        </ul>
-                    </div>
-
-                    <hr class="my-4 bg-secondary bg-opacity-25">
-
-                    <h6 class="mb-3">Market Status</h6>
-                    <div class="market-status">
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Current Time (IST):</span>
-                            <strong id="current-time">Loading...</strong>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Market Hours:</span>
-                            <strong>9:15 – 15:30</strong>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <span>Status:</span>
-                            <strong id="market-status">Loading...</strong>
-                        </div>
-                    </div>
-                </div>
+    <!-- Ticker - duplicated for seamless scroll -->
+    <div class="ticker-container">
+        <div class="ticker-wrapper">
+            <!-- First set -->
+            <div class="ticker-item">
+                <span class="ticker-symbol">NIFTY</span>
+                <span class="ticker-price">25,175.40</span>
+                <span class="text-green ms-1">▲ 0.51%</span>
             </div>
 
-            <!-- Schedule -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i> Weekly Schedule</h5>
-                </div>
-                <div class="card-body">
-                    <table class="table table-borderless table-sm mb-0">
-                        <tbody>
-                            <tr>
-                                <td><i class="fas fa-check-circle text-success me-2"></i> Monday</td>
-                                <td class="text-end">9:15 – 15:30</td>
-                            </tr>
-                            <tr>
-                                <td><i class="fas fa-times-circle text-danger me-2"></i> Tuesday</td>
-                                <td class="text-end text-muted">No Trading</td>
-                            </tr>
-                            <tr>
-                                <td><i class="fas fa-check-circle text-success me-2"></i> Wednesday</td>
-                                <td class="text-end">9:15 – 15:30</td>
-                            </tr>
-                            <tr>
-                                <td><i class="fas fa-check-circle text-success me-2"></i> Thursday</td>
-                                <td class="text-end">9:15 – 15:30</td>
-                            </tr>
-                            <tr>
-                                <td><i class="fas fa-check-circle text-success me-2"></i> Friday</td>
-                                <td class="text-end">9:15 – 15:30</td>
-                            </tr>
-                            <tr>
-                                <td><i class="fas fa-times-circle text-danger me-2"></i> Weekends</td>
-                                <td class="text-end text-muted">No Trading</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="mt-3">
-                        <small class="text-muted">
-                            <i class="far fa-clock me-1"></i>
-                            Entry window: 9:21:00 – 9:21:30 IST
-                        </small>
-                    </div>
-                </div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">BANKNIFTY</span>
+                <span class="ticker-price">59,452.30</span>
+                <span class="text-green ms-1">▲ 0.34%</span>
             </div>
 
-            <!-- Important Notes -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Important Notes</h5>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-warning border-0 bg-warning bg-opacity-10 mb-3">
-                        <small>
-                            <strong>Disclaimer:</strong><br>
-                            Trading carries significant risk of loss. Past performance is not indicative of future results. Use at your own risk.
-                        </small>
-                    </div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">SENSEX</span>
+                <span class="ticker-price">82,510.20</span>
+                <span class="text-red ms-1">▼ 0.22%</span>
+            </div>
 
-                    <div class="alert alert-secondary border-0 bg-secondary bg-opacity-10">
-                        <small>
-                            <strong>Requirements:</strong><br>
-                            • Active Zerodha account with API access<br>
-                            • Sufficient margin for NIFTY options<br>
-                            • Stable, low-latency internet connection<br>
-                            • Algorithm active only Mon, Wed–Fri
-                        </small>
-                    </div>
-                </div>
+            <div class="ticker-item">
+                <span class="ticker-symbol">FINNIFTY</span>
+                <span class="ticker-price">23,845.10</span>
+                <span class="text-green ms-1">▲ 0.18%</span>
+            </div>
+
+            <div class="ticker-item">
+                <span class="ticker-symbol">MIDCPNIFTY</span>
+                <span class="ticker-price">12,420.65</span>
+                <span class="text-red ms-1">▼ 0.09%</span>
+            </div>
+
+            <div class="ticker-item">
+                <span class="ticker-symbol">BTCUSD</span>
+                <span class="ticker-price">64,320.50</span>
+                <span class="text-green ms-1">▲ 1.25%</span>
+            </div>
+
+            <div class="ticker-item">
+                <span class="ticker-symbol">ETHUSD</span>
+                <span class="ticker-price">3,120.80</span>
+                <span class="text-red ms-1">▼ 0.47%</span>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Toast Container for save feedback (only for staff) -->
-{% if user.is_staff %}
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="save-toast" class="toast bg-success text-white" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="toast-header bg-success text-white">
-            <strong class="me-auto">Success</strong>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-        <div class="toast-body">
-            Settings updated successfully!
-        </div>
-    </div>
-    <div id="error-toast" class="toast bg-danger text-white" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="toast-header bg-danger text-white">
-            <strong class="me-auto">Error</strong>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-        <div class="toast-body" id="error-message">
-            Failed to update settings.
-        </div>
-    </div>
-</div>
-{% endif %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-<script>
-// Live market time & status (visible to all)
-function updateMarketStatus() {
-    const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const timeParts = now.split(', ');
-    const time = timeParts[1].split(':').slice(0,2).join(':');
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
 
-    document.getElementById('current-time').textContent = time + ' IST';
-
-    const hour = parseInt(time.split(':')[0]);
-    const minute = parseInt(time.split(':')[1]);
-    const day = new Date().getDay();
-
-    const isWeekday = day >= 1 && day <= 5;
-    const isTuesday = day === 2;
-    const inMarketHours = (hour > 9 || (hour === 9 && minute >= 15)) &&
-                          (hour < 15 || (hour === 15 && minute <= 30));
-
-    const statusEl = document.getElementById('market-status');
-
-    if (!isWeekday || isTuesday || !inMarketHours) {
-        statusEl.innerHTML = '<span class="text-danger fw-bold">CLOSED</span>';
-    } else {
-        statusEl.innerHTML = '<span class="text-success fw-bold">OPEN</span>';
-    }
-}
-
-updateMarketStatus();
-setInterval(updateMarketStatus, 1000);
-
-{% if user.is_staff %}
-    // ────────────────────────────────────────────────
-    // LIVE REFRESH + TOGGLE BUTTON (OPTIMISTIC UI + FAST POLLING)
-    // ────────────────────────────────────────────────
-
-    let fastPollInterval = null;
-    const FAST_POLL_MS = 1200;          // every 1.2 seconds after action
-    const FAST_POLL_DURATION = 20000;   // for ~20 seconds
-
-    function startFastPolling() {
-        if (fastPollInterval) clearInterval(fastPollInterval);
-        fastPollInterval = setInterval(() => refreshBotData(true), FAST_POLL_MS);
-        setTimeout(() => {
-            if (fastPollInterval) {
-                clearInterval(fastPollInterval);
-                fastPollInterval = null;
-            }
-        }, FAST_POLL_DURATION);
-    }
-
-    function refreshBotData(silent = false) {
-        const loadingElements = [
-            document.getElementById('target-card'),
-            document.getElementById('stop-card'),
-            document.getElementById('pnl-card')
-        ];
-
-        if (!silent) {
-            loadingElements.forEach(el => el?.classList.add('loading'));
-        }
-
-        fetch('{% url "bot_status" %}')
-            .then(response => response.json())
-            .then(data => {
-                const statusEl = document.getElementById('status-indicator');
-                const activeEl = document.getElementById('status-active');
-                const timeEl = document.getElementById('status-time');
-                const toggleBtn = document.getElementById('toggle-bot-btn');
-
-                const isActuallyRunning = data.is_running || data.flag_set;
-
-                if (isActuallyRunning) {
-                    statusEl.className = 'status-indicator status-running';
-                    statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> RUNNING';
-                    activeEl.className = 'status-indicator status-running px-3 py-2';
-                    activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Active';
-                    timeEl.textContent = 'Started ' + (data.last_started ? new Date(data.last_started).toLocaleString() : 'recently');
-                    if (toggleBtn) {
-                        toggleBtn.className = 'btn btn-danger btn-lg w-100';
-                        toggleBtn.innerHTML = '<i class="fas fa-power-off me-2"></i> Stop Algorithm';
-                        toggleBtn.disabled = false;
-                    }
-                } else {
-                    statusEl.className = 'status-indicator status-stopped';
-                    statusEl.innerHTML = '<i class="fas fa-circle fa-xs"></i> STOPPED';
-                    activeEl.className = 'status-indicator status-stopped px-3 py-2';
-                    activeEl.innerHTML = '<i class="fas fa-power-off me-2"></i> Inactive';
-                    timeEl.textContent = 'Stopped ' + (data.last_stopped ? new Date(data.last_stopped).toLocaleString() : 'recently');
-                    if (toggleBtn) {
-                        toggleBtn.className = 'btn btn-success btn-lg w-100';
-                        toggleBtn.innerHTML = '<i class="fas fa-play me-2"></i> Start Algorithm';
-                        toggleBtn.disabled = false;
-                    }
-                }
-
-                // Target & Stop-Loss
-                document.getElementById('daily-target').textContent = 
-                    data.daily_target && data.daily_target != 0 
-                        ? '₹' + data.daily_target.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
-                        : '---';
-
-                document.getElementById('daily-stop').textContent = 
-                    data.daily_stop_loss && data.daily_stop_loss != 0 
-                        ? '₹' + data.daily_stop_loss.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})
-                        : '---';
-
-                // Live PnL
-                const pnlEl = document.getElementById('current-pnl');
-                const pnlValue = data.current_unrealized_pnl.toFixed(2);
-                pnlEl.textContent = '₹' + pnlValue.toLocaleString('en-IN');
-                pnlEl.className = `value ${data.current_unrealized_pnl >= 0 ? 'text-success' : 'text-danger'}`;
-
-                // Heartbeat age with color
-                const ageEl = document.getElementById('heartbeat-age');
-                if (ageEl && data.last_heartbeat_ago) {
-                    let ageClass = 'text-danger';
-                    if (data.last_heartbeat_ago.includes('0 min') || data.last_heartbeat_ago.includes('1 min')) {
-                        ageClass = 'text-success';
-                    } else if (data.last_heartbeat_ago.match(/2|3|4/)) {
-                        ageClass = 'text-warning';
-                    }
-                    ageEl.innerHTML = `Last heartbeat: <span class="${ageClass}">${data.last_heartbeat_ago}</span>`;
-                }
-
-                // Last error
-                const errorEl = document.getElementById('last-error');
-                if (errorEl && data.last_error && data.last_error !== 'None') {
-                    errorEl.textContent = data.last_error;
-                }
-
-                if (!silent) {
-                    loadingElements.forEach(el => el?.classList.remove('loading'));
-                }
-            })
-            .catch(err => {
-                console.error('Failed to refresh bot data:', err);
-                if (!silent) {
-                    loadingElements.forEach(el => el?.classList.remove('loading'));
-                }
-            });
-    }
-
-    // Toggle bot with optimistic UI
-    document.getElementById('toggle-bot-btn')?.addEventListener('click', function(e) {
-        e.preventDefault();
-        
-        const btn = this;
-        const wasRunning = btn.textContent.trim().includes('Stop');
-        const targetState = wasRunning ? 'STOPPING' : 'STARTING';
-
-        // Optimistic UI: show processing state immediately
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i> ${targetState}...`;
-        
-        const url = wasRunning ? '{% url "stop_bot" %}' : '{% url "start_bot" %}';
-
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(response => {
-            if (response.ok) {
-                // Success → start fast polling
-                startFastPolling();
-                const toast = new bootstrap.Toast(document.getElementById('save-toast'));
-                toast.show();
-            } else {
-                // Server error → revert UI
-                refreshBotData(true);
-                const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-                document.getElementById('error-message').textContent = 'Server rejected the request.';
-                errorToast.show();
-            }
-        })
-        .catch(err => {
-            // Network error → revert
-            refreshBotData(true);
-            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-            document.getElementById('error-message').textContent = 'Network error: ' + err.message;
-            errorToast.show();
-        })
-        .finally(() => {
-            // Re-enable button quickly
-            setTimeout(() => {
-                btn.disabled = false;
-            }, 800);
-        });
-    });
-
-    // Save Max Lots Hard Cap
-    document.getElementById('save-max-lots')?.addEventListener('click', function() {
-        const value = parseInt(document.getElementById('max-lots-input').value);
-        if (isNaN(value) || value < 1 || value > 10) {
-            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-            document.getElementById('error-message').textContent = 'Please enter a number between 1 and 10';
-            errorToast.show();
-            return;
-        }
-
-        fetch('{% url "update_max_lots" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
-            body: JSON.stringify({ max_lots_hard_cap: value })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const toast = new bootstrap.Toast(document.getElementById('save-toast'));
-                toast.show();
-                document.getElementById('max-lots-input').value = data.new_value || value;
-                startFastPolling(); // refresh status quickly after config change
-            } else {
-                const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-                document.getElementById('error-message').textContent = data.error || 'Failed to save';
-                errorToast.show();
-            }
-        })
-        .catch(err => {
-            const errorToast = new bootstrap.Toast(document.getElementById('error-toast'));
-            document.getElementById('error-message').textContent = 'Error: ' + err.message;
-            errorToast.show();
-        });
-    });
-
-    // Initial load + normal polling (every 12s)
-    refreshBotData();
-    setInterval(() => refreshBotData(true), 3000);
-
-    // Strangle animation
-    function animateStrangle() {
-        const marker = document.getElementById('price-marker');
-        if (!marker) return;
-
-        const width = marker.parentElement.offsetWidth;
-        const pos = Math.random() * 0.8 + 0.1;
-        marker.style.left = (width * pos) + 'px';
-
-        const base = 24800;
-        const price = Math.round(base + (pos - 0.5) * 800);
-        document.getElementById('live-nifty').textContent = price.toLocaleString('en-IN');
-
-        document.getElementById('call-strike').textContent = (Math.round(price / 100) * 100 + 200).toLocaleString('en-IN');
-        document.getElementById('put-strike').textContent = (Math.round(price / 100) * 100 - 200).toLocaleString('en-IN');
-
-        const statuses = ["Active", "Delta neutral", "Approaching breakeven", "No position"];
-        document.getElementById('strangle-status').textContent = statuses[Math.floor(Math.random() * statuses.length)];
-    }
-    setInterval(animateStrangle, 8000);
-    animateStrangle();
-
-{% endif %}
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-{% endblock %}

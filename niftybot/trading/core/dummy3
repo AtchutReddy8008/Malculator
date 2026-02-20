@@ -27,11 +27,11 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(12, 56, 0)
-    ENTRY_END = dtime(12, 58, 30)      # FIX A: Extended from 12:57:30 → 12:58:30 to
+    ENTRY_START = dtime(9, 21, 0)
+    ENTRY_END = dtime(9, 22, 30)      # FIX A: Extended from 12:57:30 → 12:58:30 to
                                         # account for sequential order latency (~90s for 4 legs)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(13, 30)           # FIX B: Was 12:59 — only ~90s after entry window opens.
+    EXIT_TIME = dtime(15,0)           # FIX B: Was 12:59 — only ~90s after entry window opens.
                                         # Changed to 13:30 so the trade has time to run.
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
@@ -1628,7 +1628,7 @@ class TradingApplication:
                     except Exception as e:
                         self.logger.error("On-demand instrument load failed", {"error": str(e)})
 
-                if dtime(8, 55) <= current_time < dtime(15, 5):
+                if dtime(8, 55) <= current_time < dtime(10, 5):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         self.engine.load_instruments()

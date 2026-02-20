@@ -2,7 +2,7 @@
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.views import View
 
 # Celery
 from celery import current_app as celery_app
@@ -31,6 +32,69 @@ from .tasks import run_user_bot, generate_zerodha_token_task
 # Auth helpers
 from .core.auth import generate_and_set_access_token_db
 from kiteconnect import KiteConnect
+
+from django.contrib.auth.forms import AuthenticationForm
+
+
+# ───────────────────────────────────────────────
+# Combined Auth View (Login + Signup on single page)
+# ───────────────────────────────────────────────
+class AuthView(View):
+    template_name = 'trading/auth_combined.html'  # Make sure this file exists!
+    login_form_class = AuthenticationForm
+    signup_form_class = SignUpForm
+
+    def get(self, request):
+        mode = request.GET.get('mode', 'login')  # default to login tab
+
+        login_form = self.login_form_class()
+        signup_form = self.signup_form_class()
+
+        context = {
+            'login_form': login_form,
+            'signup_form': signup_form,
+            'mode': mode,
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        mode = request.POST.get('form_type', 'login')
+
+        if mode == 'login':
+            form = self.login_form_class(data=request.POST)
+            if form.is_valid():
+                user = form.get_user()
+                login(request, user)
+                messages.success(request, "Welcome back! Dashboard loading...")
+                return redirect('dashboard')
+            else:
+                messages.error(request, "Invalid credentials. Please check and try again.")
+        else:  # signup
+            form = self.signup_form_class(request.POST)
+            if form.is_valid():
+                user = form.save()
+                # Auto-login immediately after signup
+                login(request, user)
+                # Ensure BotStatus exists for the new user
+                BotStatus.objects.get_or_create(user=user)
+                messages.success(request, "Account created successfully! Welcome to your dashboard.")
+                return redirect('dashboard')
+            else:
+                # Show form errors on the signup tab
+                messages.error(request, "Please correct the errors below.")
+                # Optional: print to console for debugging
+                print("Signup form errors:", form.errors)
+
+        # If form invalid → re-render with the active tab preserved
+        login_form = self.login_form_class() if mode != 'login' else form
+        signup_form = self.signup_form_class() if mode != 'signup' else form
+
+        context = {
+            'login_form': login_form,
+            'signup_form': signup_form,
+            'mode': mode,
+        }
+        return render(request, self.template_name, context)
 
 
 def home(request):
@@ -191,7 +255,7 @@ def dashboard_stats(request):
     data['daily_pnl']   = float(stats['daily_pnl'].pnl if stats['daily_pnl'] else 0)
     data['weekly_pnl']  = float(stats['weekly_pnl'])
     data['monthly_pnl'] = float(stats['monthly_pnl'])
-#reverse
+
     return JsonResponse(data)
 
 
@@ -204,7 +268,6 @@ def calculate_overall_day_win_rate(user):
     return round((winning_days / total_days) * 100, 2)
 
 
-@login_required
 def broker_page(request):
     broker = Broker.objects.filter(
         user=request.user, broker_name='ZERODHA'
@@ -487,16 +550,6 @@ def start_bot(request):
             'message': 'Bot is already running. No new task launched.'
         }, status=400)
 
-    # ──────────────────────────────────────────────────────────────
-    # TEMPORARILY COMMENTED OUT for debugging — UNCOMMENT LATER!
-    # broker = Broker.objects.filter(user=user, broker_name='ZERODHA', is_active=True).first()
-    # if not broker or not broker.access_token:
-    #     return JsonResponse({
-    #         'success': False,
-    #         'message': 'Zerodha connection not ready. Set up broker first.'
-    #     }, status=400)
-    # ──────────────────────────────────────────────────────────────
-
     try:
         with transaction.atomic():
             bot_status.refresh_from_db()
@@ -519,13 +572,13 @@ def start_bot(request):
         LogEntry.objects.create(
             user=user,
             level='INFO',
-            message='Bot started – Celery task launched (broker check temporarily bypassed)',
+            message='Bot started – Celery task launched',
             details={'task_id': result.id, 'time': str(timezone.now())}
         )
 
         return JsonResponse({
             'success': True,
-            'message': f'Bot start requested. Task ID: {result.id[:8]}... (check status in 10–30s)',
+            'message': f'Bot start requested. Task ID: {result.id[:8]}...',
             'task_id': result.id
         })
 
@@ -660,23 +713,6 @@ def update_max_lots(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-def signup(request):
-    if request.method == 'POST':
-        form = SignUpForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            BotStatus.objects.get_or_create(user=user)
-            login(request, user)
-            messages.success(request, 'Account created successfully! Welcome.')
-            return redirect('dashboard')
-        else:
-            messages.error(request, 'Please correct the errors below.')
-    else:
-        form = SignUpForm()
-
-    return render(request, 'registration/signup.html', {'form': form})
-
-
 def user_logout(request):
     logout(request)
     messages.info(request, 'You have been logged out.')
@@ -745,3 +781,8 @@ def coming_soon_placeholder(request):
 def connect_zerodha(request):
     messages.info(request, "Zerodha connection is now managed on the Broker page.")
     return redirect('broker')
+
+def user_logout(request):
+    logout(request)
+    messages.info(request, 'You have been logged out.')
+    return redirect('home')
