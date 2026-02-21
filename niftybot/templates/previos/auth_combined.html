@@ -1,0 +1,608 @@
+{% extends 'base.html' %}
+
+{% block title %}Login / Sign Up - Trade with Naman{% endblock %}
+
+{% block content %}
+
+<style>
+    :root {
+        --primary: #00ff9d;
+        --primary-dark: #00c978;
+        --primary-glow: rgba(0,255,157,0.35);
+        --danger: #ff4d4d;
+        --glass: rgba(10,16,14,0.62);
+        --glass-border: rgba(0,255,157,0.14);
+        --font-ui: 'Inter', sans-serif;
+    }
+
+    /* ── page wrapper ── */
+    .auth-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 100px 1rem 80px;
+        position: relative;
+        z-index: 10;
+    }
+
+    /* thin dark veil over bg video */
+    .auth-page::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.30);
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    /* ── outer card ── */
+    .auth-card {
+        width: 100%;
+        max-width: 900px;
+        min-height: 560px;
+        border-radius: 28px;
+        border: 1px solid var(--glass-border);
+        background: var(--glass);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        box-shadow:
+            0 32px 80px rgba(0,0,0,0.65),
+            0 0 0 1px rgba(0,255,157,0.06),
+            inset 0 1px 0 rgba(255,255,255,0.06);
+        overflow: hidden;
+        display: flex;
+        position: relative;
+    }
+
+    /* SLIDING PANEL (green side) */
+    .slide-panel {
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 42%;
+        background: linear-gradient(145deg, #00e589, #00c978 40%, #009e5e);
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2.5rem;
+        text-align: center;
+        transition: left 0.65s cubic-bezier(0.77,0,0.18,1);
+        box-shadow: 8px 0 48px rgba(0,0,0,0.45);
+        border-radius: 0 22px 22px 0;
+        left: 0;
+    }
+
+    .auth-card.signup-active .slide-panel {
+        left: 58%;
+        border-radius: 22px 0 0 22px;
+        box-shadow: -8px 0 48px rgba(0,0,0,0.45);
+    }
+
+    .slide-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18) 0%, transparent 60%);
+        pointer-events: none;
+    }
+
+    .slide-logo {
+        width: 68px; height: 68px;
+        border-radius: 18px;
+        background: rgba(0,0,0,0.18);
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 1.6rem;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        font-size: 2rem;
+        color: #fff;
+    }
+
+    .slide-panel h2 {
+        font-family: 'Cinzel', serif;
+        font-size: 1.55rem;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 0.8rem;
+        letter-spacing: 0.5px;
+        text-shadow: 0 2px 12px rgba(0,0,0,0.25);
+    }
+
+    .slide-panel p {
+        color: rgba(255,255,255,0.82);
+        font-size: 0.92rem;
+        line-height: 1.65;
+        margin-bottom: 2rem;
+        font-family: var(--font-ui);
+    }
+
+    .slide-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 30px;
+        border-radius: 50px;
+        border: 2px solid rgba(255,255,255,0.75);
+        background: transparent;
+        color: #fff;
+        font-family: var(--font-ui);
+        font-weight: 700;
+        font-size: 0.9rem;
+        letter-spacing: 0.3px;
+        cursor: pointer;
+        transition: all 0.26s ease;
+    }
+    .slide-btn:hover {
+        background: rgba(255,255,255,0.18);
+        border-color: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 22px rgba(0,0,0,0.22);
+    }
+
+    /* FORM PANELS */
+    .forms-wrap {
+        width: 100%;
+        display: flex;
+        position: relative;
+        z-index: 10;
+    }
+
+    .form-pane {
+        width: 58%;
+        padding: 3.2rem 3rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transition: opacity 0.35s ease, transform 0.65s cubic-bezier(0.77,0,0.18,1);
+        flex-shrink: 0;
+    }
+
+    .pane-login {
+        margin-left: 42%;
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    .pane-signup {
+        position: absolute;
+        top: 0; left: 0;
+        width: 58%;
+        height: 100%;
+        opacity: 0;
+        transform: translateX(30px);
+        pointer-events: none;
+        overflow-y: auto;
+        padding: 3.2rem 3rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .auth-card.signup-active .pane-login {
+        opacity: 0;
+        transform: translateX(-30px);
+        pointer-events: none;
+    }
+    .auth-card.signup-active .pane-signup {
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: all;
+        margin-left: 0;
+    }
+
+    .form-pane h3, .pane-signup h3 {
+        font-family: 'Cinzel', serif;
+        font-size: 1.55rem;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 0.4rem;
+        letter-spacing: 0.3px;
+    }
+
+    .form-pane .form-sub, .pane-signup .form-sub {
+        font-family: var(--font-ui);
+        font-size: 0.855rem;
+        color: rgba(180,195,190,0.65);
+        margin-bottom: 2rem;
+    }
+
+    .field {
+        margin-bottom: 1.2rem;
+        position: relative;
+    }
+
+    .field label {
+        display: block;
+        font-family: var(--font-ui);
+        font-size: 0.775rem;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: rgba(0,255,157,0.70);
+        margin-bottom: 6px;
+    }
+
+    .field-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .field-icon {
+        position: absolute;
+        left: 14px;
+        color: rgba(0,255,157,0.45);
+        font-size: 0.88rem;
+        pointer-events: none;
+        transition: color 0.22s;
+        z-index: 2;
+    }
+
+    .field input {
+        width: 100%;
+        padding: 11px 14px 11px 38px;
+        border-radius: 10px;
+        border: 1px solid rgba(0,255,157,0.18);
+        background: rgba(255,255,255,0.05);
+        color: #e8f5f0;
+        font-family: var(--font-ui);
+        font-size: 0.9rem;
+        outline: none;
+        transition: all 0.24s ease;
+    }
+
+    .field input::placeholder { color: rgba(255,255,255,0.28); }
+
+    .field input:focus {
+        border-color: rgba(0,255,157,0.55);
+        background: rgba(0,255,157,0.06);
+        box-shadow: 0 0 0 3px rgba(0,255,157,0.12);
+        color: #fff;
+    }
+
+    .field input:focus + .field-icon,
+    .field-wrap:focus-within .field-icon {
+        color: var(--primary);
+    }
+
+    .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    .btn-auth {
+        width: 100%;
+        padding: 13px;
+        border-radius: 12px;
+        border: none;
+        background: var(--primary);
+        color: #041509;
+        font-family: var(--font-ui);
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        cursor: pointer;
+        box-shadow: 0 0 24px rgba(0,255,157,0.28);
+        transition: all 0.26s ease;
+        margin-top: 0.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .btn-auth:hover {
+        background: #00e891;
+        transform: translateY(-2px);
+        box-shadow: 0 0 40px rgba(0,255,157,0.50);
+    }
+
+    .btn-auth:active {
+        transform: translateY(0);
+    }
+
+    .field-error {
+        font-size: 0.76rem;
+        color: #ff6b6b;
+        margin-top: 4px;
+        display: block;
+    }
+
+    .auth-alert {
+        background: rgba(255,77,77,0.12);
+        border: 1px solid rgba(255,77,77,0.28);
+        border-radius: 10px;
+        color: #ffaaaa;
+        font-size: 0.85rem;
+        padding: 10px 14px;
+        margin-bottom: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 1.2rem 0;
+        font-size: 0.78rem;
+        color: rgba(150,165,160,0.45);
+    }
+    .divider::before,
+    .divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: rgba(255,255,255,0.08);
+    }
+
+    @media (max-width: 768px) {
+        .auth-card {
+            flex-direction: column;
+            min-height: unset;
+            max-width: 440px;
+            border-radius: 20px;
+        }
+
+        .slide-panel {
+            position: relative;
+            width: 100%;
+            left: 0 !important;
+            border-radius: 20px 20px 0 0 !important;
+            padding: 2rem 1.5rem;
+            min-height: 180px;
+            box-shadow: none;
+            border-bottom: 1px solid rgba(0,0,0,0.15);
+        }
+
+        .slide-logo { width: 52px; height: 52px; font-size: 1.5rem; margin-bottom: 1rem; }
+        .slide-panel h2 { font-size: 1.25rem; }
+        .slide-panel p  { display: none; }
+
+        .forms-wrap { flex-direction: column; }
+
+        .pane-login {
+            width: 100%;
+            margin-left: 0 !important;
+            padding: 2rem 1.5rem;
+            position: relative;
+        }
+
+        .pane-signup {
+            width: 100%;
+            position: relative;
+            height: auto;
+            overflow: visible;
+            padding: 2rem 1.5rem;
+            margin-left: 0 !important;
+            transform: none !important;
+        }
+
+        .auth-card.signup-active .pane-login { display: none; }
+        .auth-card.signup-active .pane-signup { opacity: 1; pointer-events: all; }
+        .pane-signup { display: none; }
+        .auth-card.signup-active .pane-signup { display: flex; }
+
+        .field-row { grid-template-columns: 1fr; gap: 0; }
+        .form-pane h3, .pane-signup h3 { font-size: 1.3rem; }
+        .auth-card.signup-active .slide-panel { border-radius: 20px 20px 0 0 !important; }
+    }
+</style>
+
+<div class="auth-page">
+    <div class="auth-card {% if mode == 'signup' %}signup-active{% endif %}" id="authCard">
+
+        <!-- SLIDING GREEN PANEL -->
+        <div class="slide-panel" id="slidePanel">
+            <div class="slide-logo">
+                <i class="fas fa-chart-line"></i>
+            </div>
+
+            <div id="panelLoginContent" {% if mode == 'signup' %}style="display:none;"{% endif %}>
+                <h2>New Here?</h2>
+                <p>Join thousands of traders using algo strategies to grow their portfolio consistently.</p>
+                <button class="slide-btn" onclick="switchToSignup()">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
+            </div>
+
+            <div id="panelSignupContent" {% if mode != 'signup' %}style="display:none;"{% endif %}>
+                <h2>Already Trading?</h2>
+                <p>Sign back in to access your dashboard, strategies, and live performance.</p>
+                <button class="slide-btn" onclick="switchToLogin()">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+            </div>
+        </div>
+
+        <!-- FORMS WRAP -->
+        <div class="forms-wrap">
+
+            <!-- LOGIN FORM -->
+            <div class="form-pane pane-login" id="paneLogin">
+                <h3>Welcome Back</h3>
+                <p class="form-sub">Sign in to your trading dashboard</p>
+
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="auth-alert">
+                            <i class="fas fa-exclamation-circle"></i> {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post" action="{% url 'auth' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="login">
+
+                    <div class="field">
+                        <label>Username</label>
+                        <div class="field-wrap">
+                            {{ login_form.username }}
+                            <span class="field-icon"><i class="fas fa-user"></i></span>
+                        </div>
+                        {% if login_form.username.errors %}
+                            <span class="field-error">{{ login_form.username.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="field">
+                        <label>Password</label>
+                        <div class="field-wrap">
+                            {{ login_form.password }}
+                            <span class="field-icon"><i class="fas fa-lock"></i></span>
+                        </div>
+                        {% if login_form.password.errors %}
+                            <span class="field-error">{{ login_form.password.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="btn-auth">
+                        <i class="fas fa-sign-in-alt"></i> Login to Dashboard
+                    </button>
+                </form>
+
+                <div class="divider">or</div>
+                <p style="text-align:center; font-size:0.83rem; color:rgba(170,185,180,0.6); margin:0;">
+                    Don't have an account?
+                    <span onclick="switchToSignup()"
+                          style="color:var(--primary); font-weight:600; cursor:pointer;">
+                        Sign up free →
+                    </span>
+                </p>
+            </div>
+
+            <!-- SIGNUP FORM -->
+            <div class="pane-signup" id="paneSignup">
+                <h3>Create Account</h3>
+                <p class="form-sub">Join and start algo trading in under a minute</p>
+
+                <form method="post" action="{% url 'auth' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="signup">
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Username <span style="color:var(--danger)">*</span></label>
+                            <div class="field-wrap">
+                                {{ signup_form.username }}
+                                <span class="field-icon"><i class="fas fa-user"></i></span>
+                            </div>
+                            {% if signup_form.username.errors %}
+                                <span class="field-error">{{ signup_form.username.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="field">
+                            <label>Email <span style="color:var(--danger)">*</span></label>
+                            <div class="field-wrap">
+                                {{ signup_form.email }}
+                                <span class="field-icon"><i class="fas fa-envelope"></i></span>
+                            </div>
+                            {% if signup_form.email.errors %}
+                                <span class="field-error">{{ signup_form.email.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Password <span style="color:var(--danger)">*</span></label>
+                            <div class="field-wrap">
+                                {{ signup_form.password1 }}
+                                <span class="field-icon"><i class="fas fa-lock"></i></span>
+                            </div>
+                            {% if signup_form.password1.errors %}
+                                <span class="field-error">{{ signup_form.password1.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="field">
+                            <label>Confirm Password <span style="color:var(--danger)">*</span></label>
+                            <div class="field-wrap">
+                                {{ signup_form.password2 }}
+                                <span class="field-icon"><i class="fas fa-lock"></i></span>
+                            </div>
+                            {% if signup_form.password2.errors %}
+                                <span class="field-error">{{ signup_form.password2.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Full Name</label>
+                            <div class="field-wrap">
+                                {{ signup_form.full_name }}
+                                <span class="field-icon"><i class="fas fa-id-card"></i></span>
+                            </div>
+                            {% if signup_form.full_name.errors %}
+                                <span class="field-error">{{ signup_form.full_name.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="field">
+                            <label>Mobile Number</label>
+                            <div class="field-wrap">
+                                {{ signup_form.mobile_number }}
+                                <span class="field-icon"><i class="fas fa-mobile-alt"></i></span>
+                            </div>
+                            {% if signup_form.mobile_number.errors %}
+                                <span class="field-error">{{ signup_form.mobile_number.errors|join:", " }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-auth">
+                        <i class="fas fa-rocket"></i> Start Trading Now
+                    </button>
+                </form>
+
+                <div class="divider">or</div>
+                <p style="text-align:center; font-size:0.83rem; color:rgba(170,185,180,0.6); margin:0;">
+                    Already have an account?
+                    <span onclick="switchToLogin()"
+                          style="color:var(--primary); font-weight:600; cursor:pointer;">
+                        Sign in →
+                    </span>
+                </p>
+            </div>
+
+        </div><!-- /forms-wrap -->
+    </div><!-- /auth-card -->
+</div>
+
+<script>
+    const card = document.getElementById('authCard');
+    const panelLoginContent  = document.getElementById('panelLoginContent');
+    const panelSignupContent = document.getElementById('panelSignupContent');
+
+    function switchToSignup() {
+        card.classList.add('signup-active');
+        panelLoginContent.style.display  = 'none';
+        panelSignupContent.style.display = 'block';
+    }
+
+    function switchToLogin() {
+        card.classList.remove('signup-active');
+        panelLoginContent.style.display  = 'block';
+        panelSignupContent.style.display = 'none';
+    }
+
+    // Auto-switch based on URL param
+    if (new URLSearchParams(window.location.search).get('mode') === 'signup') {
+        switchToSignup();
+    }
+
+    // Hover glow on inputs
+    document.querySelectorAll('.field input').forEach(input => {
+        input.addEventListener('focus', () => {
+            input.closest('.field').querySelector('.field-icon').style.color = 'var(--primary)';
+        });
+        input.addEventListener('blur', () => {
+            input.closest('.field').querySelector('.field-icon').style.color = 'rgba(0,255,157,0.45)';
+        });
+    });
+</script>
+
+{% endblock %}

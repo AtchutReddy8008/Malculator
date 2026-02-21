@@ -4,436 +4,1045 @@
 
 {% block extra_css %}
 <style>
-    /* Readability Fix: White button text + refined contrasts */
-    :root {
-        --primary: #22d3ee;         /* Cyan accent */
-        --success: #10b981;         /* Teal-green */
-        --danger: #ef4444;
-        --bg-gradient: linear-gradient(135deg, #0f172a, #1e293b 60%, #334155);
-        --card-bg: rgba(30, 41, 59, 0.85);
-        --card-border: rgba(203, 213, 225, 0.12);
-        --text-main: #f1f5f9;
-        --text-muted: #cbd5e1;
-        --text-label: #94a3b8;
-        --glow-success: rgba(16, 185, 129, 0.45);
-        --btn-text: #ffffff;        /* Pure white for button text */
-    }
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
-    .broker-section {
-        background: var(--bg-gradient);
-        border-radius: 20px;
-        padding: 2.5rem 1.5rem;
-        margin-bottom: 2rem;
-        border: 1px solid var(--card-border);
-    }
+  :root {
+    --bg:       #070d1a;
+    --card-bg:  rgba(14, 22, 40, 0.88);
+    --border:   rgba(255,255,255,0.07);
+    --text:     #e8f0fe;
+    --muted:    #7a8aa0;
 
-    .card {
-        background: var(--card-bg);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid var(--card-border);
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-        transition: all 0.45s cubic-bezier(0.165, 0.84, 0.44, 1);
-        opacity: 0;
-        transform: translateY(20px);
-        animation: cardFadeIn 0.9s ease-out forwards;
-    }
+    --zerodha:      #ff6b35;
+    --zerodha-glow: rgba(255,107,53,0.3);
+    --zerodha-dim:  rgba(255,107,53,0.08);
 
-    .card:hover {
-        transform: translateY(-8px);
-        box-shadow: 0 20px 60px rgba(34, 211, 238, 0.18);
-    }
+    --binance:      #f0b90b;
+    --binance-glow: rgba(240,185,11,0.3);
+    --binance-dim:  rgba(240,185,11,0.08);
 
-    @keyframes cardFadeIn {
-        to { opacity: 1; transform: translateY(0); }
-    }
+    --delta:      #7c3aed;
+    --delta-glow: rgba(124,58,237,0.3);
+    --delta-dim:  rgba(124,58,237,0.08);
 
-    .card-header {
-        background: linear-gradient(135deg, #1e293b, #334155);
-        border-bottom: none;
-        padding: 1.25rem 1.5rem;
-        color: #f1f5f9;
-        font-weight: 600;
-    }
+    --success: #10b981;
+    --danger:  #ef4444;
+    --mono:    'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
 
-    .form-floating > .form-control,
-    .form-floating > .form-control-plaintext {
-        background: rgba(51, 65, 85, 0.7);
-        border: 1px solid rgba(203, 213, 225, 0.25);
-        color: var(--text-main);
-        border-radius: 12px;
-        padding: 1rem 1rem 0.5rem;
-        height: calc(3.5rem + 2px);
-        transition: all 0.3s ease;
-        font-weight: 500;
-    }
+  *, *::before, *::after { box-sizing: border-box; }
 
-    .form-floating > .form-control:focus,
-    .form-floating > .form-control:not(:placeholder-shown) {
-        background: rgba(51, 65, 85, 0.9);
-        border-color: var(--primary);
-        box-shadow: 0 0 0 0.25rem rgba(34, 211, 238, 0.2);
-    }
+  .broker-page {
+    font-family: var(--display);
+    min-height: 100vh;
+    padding: 2.5rem 1.5rem 5rem;
+    background-image:
+      radial-gradient(ellipse 55% 50% at 15% 20%, rgba(255,107,53,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 40% at 85% 75%, rgba(124,58,237,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 35% at 50% 5%,  rgba(240,185,11,0.04) 0%, transparent 50%);
+  }
 
-    .form-floating > label {
-        color: var(--text-label);
-        padding: 1rem 1rem;
-        transition: all 0.3s ease;
-    }
+  /* ── HERO ── */
+  .page-hero {
+    text-align: center;
+    margin-bottom: 3.2rem;
+  }
 
-    .form-floating > .form-control:focus ~ label,
-    .form-floating > .form-control:not(:placeholder-shown) ~ label {
-        color: var(--primary);
-        transform: scale(0.85) translateY(-0.5rem) translateX(0.15rem);
-    }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 50px;
+    padding: 0.38rem 1.1rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #34d399;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.2rem;
+    animation: popIn 0.6s ease both;
+  }
 
-    .form-floating .toggle-btn {
-        position: absolute;
-        top: 50%;
-        right: 1rem;
-        transform: translateY(-50%);
-        z-index: 5;
-        background: transparent;
-        border: none;
-        color: var(--text-muted);
-        font-size: 1.1rem;
-        cursor: pointer;
-        transition: color 0.3s ease;
-    }
+  .hero-badge .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #34d399;
+    animation: blink 1.6s infinite;
+  }
 
-    .form-floating .toggle-btn:hover {
-        color: var(--primary);
-    }
+  @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  @keyframes popIn    { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
+  @keyframes slideUp  { from{opacity:0;transform:translateY(26px)} to{opacity:1;transform:translateY(0)} }
 
-    .form-control::placeholder {
-        color: rgba(203, 213, 225, 0.55);
-    }
+  .page-hero h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 0.8rem;
+    animation: slideUp 0.65s ease 0.05s both;
+  }
 
-    .status-connected {
-        background: rgba(16, 185, 129, 0.18);
-        color: var(--success);
-        padding: 0.45rem 1.1rem;
-        border-radius: 50px;
-        font-weight: 600;
-        border: 1px solid rgba(16, 185, 129, 0.45);
-        box-shadow: 0 0 18px var(--glow-success);
-        animation: softPulse 2.8s infinite alternate;
-    }
+  .page-hero h1 span {
+    background: linear-gradient(90deg, #38bdf8, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 
-    .status-disconnected {
-        background: rgba(239, 68, 68, 0.18);
-        color: var(--danger);
-        padding: 0.45rem 1.1rem;
-        border-radius: 50px;
-        font-weight: 600;
-        border: 1px solid rgba(239, 68, 68, 0.45);
-    }
+  .page-hero p {
+    color: var(--muted);
+    font-size: 1rem;
+    animation: slideUp 0.65s ease 0.12s both;
+  }
 
-    @keyframes softPulse {
-        from { box-shadow: 0 0 12px var(--glow-success); }
-        to   { box-shadow: 0 0 26px var(--glow-success); }
-    }
+  /* ── MAIN LAYOUT ── */
+  .broker-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1.8rem;
+    max-width: 1160px;
+    margin: 0 auto 2.5rem;
+    align-items: start;
+  }
 
-    .btn-primary {
-        background: linear-gradient(135deg, #06b6d4, #0891b2); /* Slightly brighter stops */
-        border: none;
-        font-weight: 600;
-        padding: 0.8rem 1.6rem;
-        border-radius: 12px;
-        transition: all 0.4s ease;
-        color: var(--btn-text); /* White text for perfect visibility */
-        text-shadow: 0 1px 2px rgba(0,0,0,0.4); /* Subtle shadow for depth/readability */
-    }
+  /* ── BROKER GRID (left col) ── */
+  .broker-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.8rem;
+  }
 
-    .btn-primary:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 32px rgba(34, 211, 238, 0.4);
-    }
+  /* ── RIGHT SIDEBAR ── */
+  .sidebar { display: flex; flex-direction: column; gap: 1.6rem; }
 
-    /* ──────────────────────────────────────────────── */
-    /* Added: Make How-to list text clearly visible     */
-    .how-to-list {
-        color: #ffffff !important;
-        font-weight: 500;
-    }
+  /* ── CARD (shared) ── */
+  .broker-card,
+  .sidebar-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    opacity: 0;
+    transform: translateY(26px);
+    animation: slideUp 0.6s ease forwards;
+    transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.35s ease;
+    position: relative;
+  }
 
-    .how-to-list li {
-        margin-bottom: 0.9rem;
-    }
+  .broker-card:nth-child(1) { animation-delay: 0.07s; }
+  .broker-card:nth-child(2) { animation-delay: 0.18s; }
+  .broker-card:nth-child(3) { animation-delay: 0.29s; }
+  .sidebar-card:nth-child(1) { animation-delay: 0.15s; }
+  .sidebar-card:nth-child(2) { animation-delay: 0.25s; }
+  .sidebar-card:nth-child(3) { animation-delay: 0.35s; }
 
-    .how-to-list li::before {
-        color: var(--primary) !important;
-        font-weight: 700;
-    }
+  /* coloured top stripe */
+  .broker-card::before {
+    content: '';
+    display: block;
+    height: 3px;
+    border-radius: 20px 20px 0 0;
+  }
 
-    .how-to-list a {
-        color: #67e8f9 !important;          /* Bright cyan - visible & theme-matched */
-        text-decoration: underline;
-        transition: color 0.2s ease;
-    }
+  .broker-card.zerodha-card::before { background: linear-gradient(90deg, var(--zerodha), #ff9a72, transparent); }
+  .broker-card.binance-card::before  { background: linear-gradient(90deg, var(--binance), #fde68a, transparent); }
+  .broker-card.delta-card::before    { background: linear-gradient(90deg, var(--delta),   #a78bfa, transparent); }
 
-    .how-to-list a:hover {
-        color: #a5f3fc !important;
-    }
-    /* ──────────────────────────────────────────────── */
+  .broker-card.zerodha-card:hover { transform: translateY(-7px); box-shadow: 0 22px 65px var(--zerodha-glow); border-color: rgba(255,107,53,0.4); }
+  .broker-card.binance-card:hover  { transform: translateY(-7px); box-shadow: 0 22px 65px var(--binance-glow); border-color: rgba(240,185,11,0.4); }
+  .broker-card.delta-card:hover    { transform: translateY(-7px); box-shadow: 0 22px 65px var(--delta-glow);   border-color: rgba(124,58,237,0.4); }
 
-    .alert-warning {
-        background: rgba(249, 115, 22, 0.15);
-        border-left: 4px solid #f97316;
-        border-radius: 10px;
-        color: #fed7aa;
-    }
+  /* ── CARD HEADER ── */
+  .broker-header {
+    padding: 1.3rem 1.5rem 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
 
-    .text-muted {
-        color: var(--text-muted) !important;
-    }
+  .broker-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+  }
 
-    .table-hover tbody tr:hover {
-        background: rgba(34, 211, 238, 0.08);
-    }
+  .broker-logo {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 800;
+    font-family: var(--mono);
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+  }
+
+  .broker-card:hover .broker-logo { transform: rotate(6deg) scale(1.08); }
+
+  .zerodha-card .broker-logo { background: var(--zerodha-dim); color: var(--zerodha); border: 1px solid rgba(255,107,53,0.3); }
+  .binance-card  .broker-logo { background: var(--binance-dim); color: var(--binance); border: 1px solid rgba(240,185,11,0.3); }
+  .delta-card    .broker-logo { background: var(--delta-dim);   color: var(--delta);   border: 1px solid rgba(124,58,237,0.3); }
+
+  .broker-info-col { display: flex; flex-direction: column; gap: 0.25rem; }
+
+  .broker-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .broker-sub {
+    font-size: 0.7rem;
+    font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
+
+  .status-pill {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    font-weight: 700;
+    padding: 0.28rem 0.8rem;
+    border-radius: 50px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .status-pill.connected    { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.35); animation: glow 2.2s infinite alternate; }
+  .status-pill.disconnected { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
+  .status-pill.coming-soon  { background: rgba(249,115,22,0.12); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
+
+  @keyframes glow {
+    from { box-shadow: 0 0 6px rgba(16,185,129,0.2); }
+    to   { box-shadow: 0 0 16px rgba(16,185,129,0.45); }
+  }
+
+  .enc-tag {
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .enc-tag i { color: #34d399; font-size: 0.65rem; }
+
+  /* ── CARD BODY ── */
+  .broker-body { padding: 1.4rem 1.5rem 1.6rem; }
+
+  /* Django form field styling - makes form widgets match the design */
+  .field-group { display: grid; gap: 0.85rem; margin-bottom: 1.2rem; }
+
+  .field-wrap { position: relative; }
+
+  .field-wrap label {
+    display: block;
+    font-size: 0.7rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 0.38rem;
+  }
+
+  /* Django renders input as .field-wrap > input - cover all input types */
+  .field-wrap input[type="text"],
+  .field-wrap input[type="password"],
+  .field-wrap input[type="email"],
+  .field-wrap input {
+    width: 100%;
+    padding: 0.72rem 2.6rem 0.72rem 1rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.86rem;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .field-wrap input::placeholder { color: rgba(120,140,170,0.45); }
+
+  .zerodha-card .field-wrap input:focus { border-color: var(--zerodha); box-shadow: 0 0 0 3px rgba(255,107,53,0.14); background: rgba(255,107,53,0.03); }
+  .binance-card  .field-wrap input:focus { border-color: var(--binance); box-shadow: 0 0 0 3px rgba(240,185,11,0.14); background: rgba(240,185,11,0.03); }
+  .delta-card    .field-wrap input:focus { border-color: var(--delta);   box-shadow: 0 0 0 3px rgba(124,58,237,0.14); background: rgba(124,58,237,0.03); }
+
+  /* Django form errors */
+  .field-error {
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    color: #f87171;
+    margin-top: 0.3rem;
+  }
+
+  .field-error ul { margin: 0; padding: 0; list-style: none; }
+
+  /* TOTP hint */
+  .field-hint {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-top: 0.35rem;
+    line-height: 1.5;
+  }
+
+  .toggle-eye {
+    position: absolute;
+    right: 0.85rem;
+    bottom: 0.72rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.82rem;
+    padding: 0;
+    transition: color 0.2s;
+  }
+
+  .zerodha-card .toggle-eye:hover { color: var(--zerodha); }
+  .binance-card  .toggle-eye:hover { color: var(--binance); }
+  .delta-card    .toggle-eye:hover { color: var(--delta); }
+
+  /* ── ACTIONS ── */
+  .broker-actions { display: flex; gap: 0.8rem; }
+
+  .btn-reset {
+    flex: 1;
+    padding: 0.75rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--muted);
+    font-family: var(--display);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .btn-reset:hover { background: rgba(255,255,255,0.08); color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+  .btn-connect {
+    flex: 2;
+    padding: 0.75rem;
+    border-radius: 10px;
+    border: none;
+    color: #fff;
+    font-family: var(--display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.35s ease;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+
+  .zerodha-card .btn-connect { background: linear-gradient(135deg, #ff6b35, #e8521f); }
+  .zerodha-card .btn-connect:hover { box-shadow: 0 8px 28px var(--zerodha-glow); transform: translateY(-2px); }
+
+  /* ── COMING SOON BODY ── */
+  .coming-body {
+    padding: 2.2rem 1.5rem;
+    text-align: center;
+  }
+
+  .coming-icon { font-size: 2.2rem; margin-bottom: 0.8rem; }
+
+  .coming-body p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    margin-bottom: 0.5rem;
+  }
+
+  .coming-body a {
+    color: #fbbf24;
+    text-decoration: underline;
+    font-size: 0.85rem;
+  }
+
+  /* ── SIDEBAR CARDS ── */
+  .sidebar-card {
+    border-radius: 18px;
+  }
+
+  .sidebar-card-header {
+    padding: 1.1rem 1.4rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .sidebar-card-header i { color: var(--muted); font-size: 0.9rem; }
+
+  .sidebar-card-body { padding: 1.2rem 1.4rem 1.4rem; }
+
+  /* ── HOW TO CARD ── */
+  .how-to-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: steps;
+  }
+
+  .how-to-list li {
+    counter-increment: steps;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    color: #c8d5e8;
+    font-size: 0.84rem;
+    line-height: 1.6;
+  }
+
+  .how-to-list li::before {
+    content: counter(steps);
+    min-width: 22px;
+    height: 22px;
+    background: rgba(255,107,53,0.12);
+    border: 1px solid rgba(255,107,53,0.3);
+    color: var(--zerodha);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .how-to-list a {
+    color: #67e8f9;
+    text-decoration: underline;
+    transition: color 0.2s;
+  }
+
+  .how-to-list a:hover { color: #a5f3fc; }
+
+  .how-to-list strong { color: var(--text); }
+
+  .sidebar-note {
+    margin-top: 1rem;
+    padding: 0.9rem 1rem;
+    background: rgba(255,107,53,0.06);
+    border: 1px solid rgba(255,107,53,0.18);
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 0.71rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ── SECURITY STATUS CARD ── */
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .status-label {
+    font-size: 0.8rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .status-value {
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+
+  .status-connected-pill {
+    background: rgba(16,185,129,0.12);
+    color: #34d399;
+    border: 1px solid rgba(16,185,129,0.35);
+    padding: 0.25rem 0.75rem;
+    border-radius: 50px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    animation: glow 2.2s infinite alternate;
+  }
+
+  .status-disconnected-pill {
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.35);
+    padding: 0.25rem 0.75rem;
+    border-radius: 50px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
+
+  .warn-box {
+    margin-top: 0.8rem;
+    padding: 0.9rem 1rem;
+    background: rgba(249,115,22,0.07);
+    border: 1px solid rgba(249,115,22,0.25);
+    border-left: 3px solid #f97316;
+    border-radius: 10px;
+  }
+
+  .warn-box-title {
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    font-weight: 700;
+    color: #fb923c;
+    margin-bottom: 0.5rem;
+  }
+
+  .warn-box ul {
+    list-style: none;
+    padding: 0; margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .warn-box li {
+    font-size: 0.76rem;
+    font-family: var(--mono);
+    color: #fed7aa;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .warn-box li::before {
+    content: '›';
+    color: #f97316;
+    font-weight: 700;
+  }
+
+  /* ── CONNECTION HISTORY ── */
+  .history-card { margin-top: 0; }
+
+  .history-card-header {
+    padding: 1.1rem 1.4rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .history-card-header i { color: var(--muted); font-size: 0.9rem; }
+
+  .history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .history-table thead th {
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .history-table tbody td {
+    padding: 0.85rem 1rem;
+    color: var(--text);
+    font-family: var(--mono);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+
+  .history-table tbody tr:last-child td { border-bottom: none; }
+
+  .history-table tbody tr:hover td { background: rgba(255,255,255,0.03); }
+
+  .badge-active {
+    background: rgba(16,185,129,0.12);
+    color: #34d399;
+    border: 1px solid rgba(16,185,129,0.3);
+    padding: 0.2rem 0.6rem;
+    border-radius: 50px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-inactive {
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.3);
+    padding: 0.2rem 0.6rem;
+    border-radius: 50px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-edit {
+    padding: 0.3rem 0.75rem;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.25s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .btn-edit:hover { background: rgba(255,255,255,0.1); color: var(--text); border-color: rgba(255,255,255,0.22); }
+
+  .empty-history {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+
+  .empty-history i { font-size: 2rem; opacity: 0.3; display: block; margin-bottom: 0.7rem; }
+
+  /* ── INFO ALERT ── */
+  .info-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 0.9rem 1rem;
+    background: rgba(56,189,248,0.07);
+    border: 1px solid rgba(56,189,248,0.2);
+    border-radius: 10px;
+    margin-bottom: 1.2rem;
+    font-size: 0.8rem;
+    font-family: var(--mono);
+    color: #7dd3fc;
+    line-height: 1.5;
+  }
+
+  .info-alert i { color: #38bdf8; margin-top: 0.05rem; flex-shrink: 0; }
+
+  /* ── SECURITY BANNER ── */
+  .security-banner {
+    max-width: 1160px;
+    margin: 0 auto;
+    background: linear-gradient(135deg, rgba(16,185,129,0.05), rgba(56,189,248,0.05));
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 18px;
+    padding: 1.8rem 2.2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.8rem;
+    animation: slideUp 0.65s ease 0.4s both;
+    opacity: 0;
+  }
+
+  .sec-icon-wrap {
+    width: 60px; height: 60px;
+    border-radius: 14px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.7rem;
+    flex-shrink: 0;
+  }
+
+  .sec-text h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+  }
+
+  .sec-text p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin: 0 0 0.7rem;
+  }
+
+  .sec-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  .sec-badge {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    padding: 0.22rem 0.65rem;
+    border-radius: 50px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.22);
+    color: #34d399;
+  }
+
+  @media (max-width: 900px) {
+    .broker-layout   { grid-template-columns: 1fr; }
+    .security-banner { flex-direction: column; text-align: center; }
+    .sec-badges      { justify-content: center; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="broker-section">
-    <div class="row">
-        <div class="col-md-12 text-center">
-            <h1 class="mb-4"><i class="fas fa-plug me-3" style="color:var(--primary)"></i> Broker Connection</h1>
-            <p class="text-muted lead">Securely connect Zerodha to power automated NIFTY trading</p>
-        </div>
-    </div>
+<div class="broker-page">
 
-    <div class="row g-4">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-cogs me-2"></i> Connect Zerodha Account</h5>
-                </div>
-                <div class="card-body p-4">
-                    <div class="alert alert-info border-0 bg-info bg-opacity-10 text-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Note:</strong> Your credentials are stored securely in our database. They are only used to authenticate with Zerodha's API.
-                    </div>
+  <!-- Hero -->
+  <div class="page-hero">
+    <div class="hero-badge"><span class="dot"></span> Secure &amp; Encrypted</div>
+    <h1>Broker <span>Connection</span></h1>
+    <p>Securely connect Zerodha to power automated NIFTY trading</p>
+  </div>
 
-                    <form method="post" class="mt-4">
-                        {% csrf_token %}
+  <!-- Main Layout -->
+  <div class="broker-layout">
 
-                        <div class="row g-4">
-                            <div class="col-md-6">
-                                <div class="form-floating position-relative">
-                                    {{ form.api_key }}
-                                    <label for="{{ form.api_key.id_for_label }}">API Key *</label>
-                                </div>
-                                {% if form.api_key.errors %}
-                                    <div class="text-danger mt-1 small">{{ form.api_key.errors }}</div>
-                                {% endif %}
-                            </div>
+    <!-- LEFT: Broker Cards + History -->
+    <div>
+      <div class="broker-grid">
 
-                            <div class="col-md-6">
-                                <div class="form-floating position-relative">
-                                    {{ form.secret_key }}
-                                    <label for="{{ form.secret_key.id_for_label }}">Secret Key *</label>
-                                    <button type="button" class="toggle-btn toggle-secret">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                                {% if form.secret_key.errors %}
-                                    <div class="text-danger mt-1 small">{{ form.secret_key.errors }}</div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="form-floating">
-                                    {{ form.zerodha_user_id }}
-                                    <label for="{{ form.zerodha_user_id.id_for_label }}">Zerodha User ID *</label>
-                                </div>
-                                {% if form.zerodha_user_id.errors %}
-                                    <div class="text-danger mt-1 small">{{ form.zerodha_user_id.errors }}</div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="form-floating position-relative">
-                                    {{ form.password }}
-                                    <label for="{{ form.password.id_for_label }}">Password *</label>
-                                    <button type="button" class="toggle-btn toggle-password">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                                {% if form.password.errors %}
-                                    <div class="text-danger mt-1 small">{{ form.password.errors }}</div>
-                                {% endif %}
-                            </div>
-
-                            <div class="col-12">
-                                <div class="form-floating">
-                                    {{ form.totp }}
-                                    <label for="{{ form.totp.id_for_label }}">TOTP Secret (Optional)</label>
-                                </div>
-                                <small class="text-muted d-block mt-1">Required for automated trading. Get this from Zerodha Console → Profile → Two Factor Authentication → TOTP</small>
-                                {% if form.totp.errors %}
-                                    <div class="text-danger mt-1 small">{{ form.totp.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-save me-2"></i> Save Credentials
-                            </button>
-                        </div>
-                    </form>
-                </div>
+        <!-- ── ZERODHA (ACTIVE FORM) ── -->
+        <div class="broker-card zerodha-card">
+          <div class="broker-header">
+            <div class="broker-identity">
+              <div class="broker-logo">Z</div>
+              <div class="broker-info-col">
+                <span class="broker-name">Zerodha</span>
+                <span class="broker-sub">kite.zerodha.com</span>
+              </div>
             </div>
-        </div>
+            <div class="header-right">
+              <span class="status-pill {% if has_credentials %}connected{% else %}disconnected{% endif %}">
+                <i class="fas fa-circle me-1" style="font-size:0.45rem"></i>
+                {% if has_credentials %}Connected{% else %}Not Connected{% endif %}
+              </span>
+              <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+            </div>
+          </div>
 
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i> How to Get Credentials</h5>
-                </div>
-                <div class="card-body">
-                    <ol class="how-to-list list-unstyled mb-0">
-                        <li>Login to <a href="https://developers.kite.trade/login" target="_blank" rel="noopener noreferrer">Zerodha Developer Console</a> with your Zerodha credentials</li>
-                        <li>Go to <strong>My Apps</strong> → Create new app (or select existing)</li>
-                        <li>Copy <strong>API Key</strong> and <strong>API Secret</strong></li>
-                        <li><strong>For automated trading & real-time data</strong> (essential for NIFTY strategies):  
-                            Subscribe to <strong>Connect</strong> plan — <strong>₹500/month per app</strong> (auto-renews; includes WebSocket live data + historical candles)</li>
-                        <li><strong>Free Personal tier</strong>: Allows basic order placement & account access (no live/historical data)</li>
-                        <li>User ID & Password = your regular Kite login credentials</li>
-                        <li>TOTP Secret (recommended): Zerodha Console → Profile → Two Factor Authentication → TOTP</li>
-                    </ol>
-                    
-                    <small class="text-muted d-block mt-3">
-                        ₹500/month Connect plan renews automatically via developer console billing.  
-                        Start with free Personal tier to test basic setup.
-                    </small>
-                </div>
+          <div class="broker-body">
+
+            <!-- Info Note (from first template) -->
+            <div class="info-alert">
+              <i class="fas fa-info-circle"></i>
+              <span><strong>Note:</strong> Your credentials are stored securely. They are only used to authenticate with Zerodha's API.</span>
             </div>
 
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i> Security Status</h5>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <strong>Broker Connection:</strong>
-                        {% if has_credentials %}
-                            <span class="status-connected"><i class="fas fa-check-circle me-2"></i> CONNECTED</span>
-                        {% else %}
-                            <span class="status-disconnected"><i class="fas fa-times-circle me-2"></i> NOT CONNECTED</span>
-                        {% endif %}
-                    </div>
+            <!-- Django Form (from first template, styled with second's aesthetic) -->
+            <form method="post">
+              {% csrf_token %}
+              <div class="field-group">
 
-                    <div class="mb-3">
-                        <strong>Last Updated:</strong><br>
-                        {% if brokers.first %}
-                            {{ brokers.first.updated_at|date:"Y-m-d H:i" }}
-                        {% else %}
-                            Never
-                        {% endif %}
+                <div class="row g-3" style="--bs-gutter-x: 0.85rem;">
+                  <div class="col-md-6">
+                    <div class="field-wrap">
+                      <label for="{{ form.api_key.id_for_label }}">API Key *</label>
+                      {{ form.api_key }}
+                      {% if form.api_key.errors %}
+                        <div class="field-error">{{ form.api_key.errors }}</div>
+                      {% endif %}
                     </div>
+                  </div>
 
-                    <div class="alert alert-warning mt-3">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Security Tips:</strong>
-                        <ul class="mb-0 mt-2">
-                            <li>Never share your credentials</li>
-                            <li>Use strong passwords</li>
-                            <li>Enable 2FA on Zerodha</li>
-                            <li>Monitor account regularly</li>
-                        </ul>
+                  <div class="col-md-6">
+                    <div class="field-wrap">
+                      <label for="{{ form.secret_key.id_for_label }}">Secret Key *</label>
+                      {{ form.secret_key }}
+                      <button type="button" class="toggle-eye" onclick="toggleField('{{ form.secret_key.id_for_label }}', this)">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      {% if form.secret_key.errors %}
+                        <div class="field-error">{{ form.secret_key.errors }}</div>
+                      {% endif %}
                     </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="field-wrap">
+                      <label for="{{ form.zerodha_user_id.id_for_label }}">Zerodha User ID *</label>
+                      {{ form.zerodha_user_id }}
+                      {% if form.zerodha_user_id.errors %}
+                        <div class="field-error">{{ form.zerodha_user_id.errors }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="field-wrap">
+                      <label for="{{ form.password.id_for_label }}">Password *</label>
+                      {{ form.password }}
+                      <button type="button" class="toggle-eye" onclick="toggleField('{{ form.password.id_for_label }}', this)">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      {% if form.password.errors %}
+                        <div class="field-error">{{ form.password.errors }}</div>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <div class="col-12">
+                    <div class="field-wrap">
+                      <label for="{{ form.totp.id_for_label }}">TOTP Secret <span style="font-weight:400;text-transform:none;letter-spacing:0">(Optional)</span></label>
+                      {{ form.totp }}
+                      {% if form.totp.errors %}
+                        <div class="field-error">{{ form.totp.errors }}</div>
+                      {% endif %}
+                      <div class="field-hint">
+                        Required for automated trading. Get this from Zerodha Console → Profile → Two Factor Authentication → TOTP
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+              </div><!-- /field-group -->
+
+              <div class="broker-actions">
+                <button type="reset" class="btn-reset"><i class="fas fa-redo me-1"></i> Reset</button>
+                <button type="submit" class="btn-connect">
+                  <i class="fas fa-save me-2"></i>
+                  {% if has_credentials %}Update Credentials{% else %}Connect Zerodha{% endif %}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div><!-- /zerodha-card -->
+
+        <!-- ── BINANCE (COMING SOON) ── -->
+        <div class="broker-card binance-card">
+          <div class="broker-header">
+            <div class="broker-identity">
+              <div class="broker-logo">B</div>
+              <div class="broker-info-col">
+                <span class="broker-name">Binance</span>
+                <span class="broker-sub">binance.com/api</span>
+              </div>
             </div>
+            <div class="header-right">
+              <span class="status-pill coming-soon">⏳ Coming Soon</span>
+              <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+            </div>
+          </div>
+          <div class="coming-body">
+            <div class="coming-icon">🟡</div>
+            <p>Binance integration is under active development.<br>Expected in Q3 2026.</p>
+          </div>
         </div>
-    </div>
 
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-history me-2"></i> Connection History</h5>
-                </div>
-                <div class="card-body p-0">
-                    {% if brokers %}
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0 text-center align-middle">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th>Broker</th>
-                                        <th>Status</th>
-                                        <th>Created</th>
-                                        <th>Last Updated</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for broker in brokers %}
-                                        <tr>
-                                            <td>{{ broker.broker_name }}</td>
-                                            <td>
-                                                {% if broker.is_active %}
-                                                    <span class="badge bg-success px-3 py-2">Active</span>
-                                                {% else %}
-                                                    <span class="badge bg-danger px-3 py-2">Inactive</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>{{ broker.created_at|date:"Y-m-d H:i" }}</td>
-                                            <td>{{ broker.updated_at|date:"Y-m-d H:i" }}</td>
-                                            <td>
-                                                <a href="#" class="btn btn-sm btn-outline-light"><i class="fas fa-edit"></i> Edit</a>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+        <!-- ── DELTA EXCHANGE (COMING SOON) ── -->
+        <div class="broker-card delta-card">
+          <div class="broker-header">
+            <div class="broker-identity">
+              <div class="broker-logo">Δ</div>
+              <div class="broker-info-col">
+                <span class="broker-name">Delta Exchange</span>
+                <span class="broker-sub">delta.exchange/api</span>
+              </div>
+            </div>
+            <div class="header-right">
+              <span class="status-pill coming-soon">⏳ Coming Soon</span>
+              <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+            </div>
+          </div>
+          <div class="coming-body">
+            <div class="coming-icon">🟣</div>
+            <p>Delta Exchange support is planned for 2026.<br>Stay tuned for updates.</p>
+          </div>
+        </div>
+
+      </div><!-- /broker-grid -->
+
+      <!-- ── CONNECTION HISTORY ── -->
+      <div class="sidebar-card history-card" style="margin-top: 1.8rem; animation-delay: 0.38s;">
+        <div class="history-card-header">
+          <i class="fas fa-history"></i>
+          Connection History
+        </div>
+        {% if brokers %}
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Broker</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for broker in brokers %}
+                <tr>
+                  <td>{{ broker.broker_name }}</td>
+                  <td>
+                    {% if broker.is_active %}
+                      <span class="badge-active">Active</span>
                     {% else %}
-                        <div class="text-center py-5 text-muted">
-                            <i class="fas fa-history fa-3x mb-3 opacity-50"></i>
-                            <p>No broker connections found yet.</p>
-                        </div>
+                      <span class="badge-inactive">Inactive</span>
                     {% endif %}
-                </div>
-            </div>
+                  </td>
+                  <td>{{ broker.created_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ broker.updated_at|date:"Y-m-d H:i" }}</td>
+                  <td>
+                    <a href="#" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-history">
+            <i class="fas fa-history"></i>
+            No broker connections found yet.
+          </div>
+        {% endif %}
+      </div>
+
+    </div><!-- /left col -->
+
+    <!-- RIGHT: Sidebar -->
+    <div class="sidebar">
+
+      <!-- How to Get Credentials -->
+      <div class="sidebar-card" style="animation-delay: 0.12s;">
+        <div class="sidebar-card-header">
+          <i class="fas fa-question-circle"></i>
+          How to Get Credentials
         </div>
+        <div class="sidebar-card-body">
+          <ol class="how-to-list">
+            <li>Login to <a href="https://developers.kite.trade/login" target="_blank" rel="noopener noreferrer">Zerodha Developer Console</a> with your Zerodha credentials</li>
+            <li>Go to <strong>My Apps</strong> → Create new app (or select existing)</li>
+            <li>Copy <strong>API Key</strong> and <strong>API Secret</strong></li>
+            <li>
+              <strong>For automated trading & real-time data</strong> (essential for NIFTY strategies):
+              Subscribe to <strong>Connect</strong> plan — <strong>₹500/month per app</strong>
+              (auto-renews; includes WebSocket live data + historical candles)
+            </li>
+            <li><strong>Free Personal tier</strong>: Allows basic order placement & account access (no live/historical data)</li>
+            <li>User ID & Password = your regular Kite login credentials</li>
+            <li>TOTP Secret (recommended): Console → Profile → Two Factor Authentication → TOTP</li>
+          </ol>
+          <div class="sidebar-note">
+            ₹500/month Connect plan renews automatically via developer console billing.
+            Start with free Personal tier to test basic setup.
+          </div>
+        </div>
+      </div>
+
+      <!-- Security Status -->
+      <div class="sidebar-card" style="animation-delay: 0.22s;">
+        <div class="sidebar-card-header">
+          <i class="fas fa-shield-alt"></i>
+          Security Status
+        </div>
+        <div class="sidebar-card-body">
+
+          <div class="status-row">
+            <span class="status-label">Broker Connection</span>
+            {% if has_credentials %}
+              <span class="status-connected-pill"><i class="fas fa-check-circle me-1"></i> Connected</span>
+            {% else %}
+              <span class="status-disconnected-pill"><i class="fas fa-times-circle me-1"></i> Not Connected</span>
+            {% endif %}
+          </div>
+
+          <div class="status-row">
+            <span class="status-label">Last Updated</span>
+            <span class="status-value">
+              {% if brokers.first %}
+                {{ brokers.first.updated_at|date:"Y-m-d H:i" }}
+              {% else %}
+                Never
+              {% endif %}
+            </span>
+          </div>
+
+          <div class="warn-box">
+            <div class="warn-box-title"><i class="fas fa-exclamation-triangle me-1"></i> Security Tips</div>
+            <ul>
+              <li>Never share your credentials</li>
+              <li>Use strong passwords</li>
+              <li>Enable 2FA on Zerodha</li>
+              <li>Monitor account regularly</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /sidebar -->
+
+  </div><!-- /broker-layout -->
+
+  <!-- Security Banner -->
+  <div class="security-banner">
+    <div class="sec-icon-wrap">🔐</div>
+    <div class="sec-text">
+      <h4>Your Security is Our Priority</h4>
+      <p>All credentials are encrypted using industry-standard AES-256 encryption. We never store your passwords in plain text and use secure API connections for all trading operations.</p>
+      <div class="sec-badges">
+        <span class="sec-badge">AES-256 Encrypted</span>
+        <span class="sec-badge">No Plain-text Storage</span>
+        <span class="sec-badge">Secure API Only</span>
+        <span class="sec-badge">Read + Trade Scope Only</span>
+      </div>
     </div>
-</div>
+  </div>
+
+</div><!-- /broker-page -->
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Toggle password visibility
-        const togglePassword = document.querySelector('.toggle-password');
-        const passwordField = document.getElementById('id_password');
+function toggleField(id, btn) {
+  const inp  = document.getElementById(id);
+  const icon = btn.querySelector('i');
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  icon.classList.toggle('fa-eye');
+  icon.classList.toggle('fa-eye-slash');
+}
 
-        if (togglePassword && passwordField) {
-            togglePassword.addEventListener('click', function () {
-                const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
-                passwordField.setAttribute('type', type);
-                this.querySelector('i').classList.toggle('fa-eye');
-                this.querySelector('i').classList.toggle('fa-eye-slash');
-            });
-        }
-
-        // Toggle secret key visibility
-        const toggleSecret = document.querySelector('.toggle-secret');
-        const secretField = document.getElementById('id_secret_key');
-
-        if (toggleSecret && secretField) {
-            toggleSecret.addEventListener('click', function () {
-                const type = secretField.getAttribute('type') === 'password' ? 'text' : 'password';
-                secretField.setAttribute('type', type);
-                this.querySelector('i').classList.toggle('fa-eye');
-                this.querySelector('i').classList.toggle('fa-eye-slash');
-            });
-        }
-
-        // Ensure initial type
-        if (passwordField) passwordField.type = 'password';
-        if (secretField) secretField.type = 'password';
-    });
+// Ensure password fields start hidden
+document.addEventListener('DOMContentLoaded', function () {
+  const pwFields = ['{{ form.password.id_for_label }}', '{{ form.secret_key.id_for_label }}'];
+  pwFields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.type = 'password';
+  });
+});
 </script>
 {% endblock %}

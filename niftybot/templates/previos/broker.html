@@ -1,0 +1,1047 @@
+{% extends 'base.html' %}
+
+{% block title %}Broker Connection - Trade with Naman{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+  /* ═══════════════════════════════════════════════
+     ROOT & RESET
+  ═══════════════════════════════════════════════ */
+  :root {
+    --ink:       #03050a;
+    --surface:   #0a0f1e;
+    --panel:     #0f1829;
+    --lift:      #141f35;
+    --edge:      rgba(255,255,255,0.06);
+    --edge-hot:  rgba(34,215,238,0.35);
+    --cyan:      #22d7ee;
+    --cyan-dim:  rgba(34,215,238,0.12);
+    --cyan-glow: rgba(34,215,238,0.35);
+    --green:     #00e5a0;
+    --green-dim: rgba(0,229,160,0.12);
+    --red:       #ff4d6a;
+    --red-dim:   rgba(255,77,106,0.12);
+    --amber:     #ffb830;
+    --amber-dim: rgba(255,184,48,0.1);
+    --text:      #e8edf8;
+    --muted:     #5a7090;
+    --label:     #8ba3be;
+    --mono:      'Space Mono', monospace;
+    --sans:      'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ═══════════════════════════════════════════════
+     PAGE WRAPPER & GRID BACKGROUND
+  ═══════════════════════════════════════════════ */
+  .broker-page {
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 2rem 1.5rem 6rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Animated grid background */
+  .broker-page::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(34,215,238,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,215,238,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+    animation: gridDrift 20s linear infinite;
+  }
+
+  @keyframes gridDrift {
+    0%   { background-position: 0 0; }
+    100% { background-position: 40px 40px; }
+  }
+
+  /* Radial spotlight */
+  .broker-page::after {
+    content: '';
+    position: fixed;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 900px;
+    height: 600px;
+    background: radial-gradient(ellipse at center, rgba(34,215,238,0.06) 0%, transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .broker-page > * { position: relative; z-index: 1; }
+
+  /* ═══════════════════════════════════════════════
+     HERO HEADER
+  ═══════════════════════════════════════════════ */
+  .broker-hero {
+    text-align: center;
+    max-width: 620px;
+    margin: 0 auto 3rem;
+    animation: heroReveal 0.8s cubic-bezier(0.22,1,0.36,1) both;
+  }
+
+  @keyframes heroReveal {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34,215,238,0.22);
+    border-radius: 4px;
+    padding: 0.35rem 1rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .hero-chip::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    animation: blinkDot 1.4s steps(1) infinite;
+  }
+
+  @keyframes blinkDot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  .broker-hero h1 {
+    font-family: var(--sans);
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    margin-bottom: 0.8rem;
+  }
+
+  .broker-hero h1 span {
+    background: linear-gradient(135deg, var(--cyan), var(--green));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .broker-hero p {
+    color: var(--label);
+    font-size: 0.95rem;
+    line-height: 1.65;
+    font-family: var(--mono);
+  }
+
+  /* ═══════════════════════════════════════════════
+     MAIN LAYOUT
+  ═══════════════════════════════════════════════ */
+  .broker-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1.5rem;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  /* ═══════════════════════════════════════════════
+     PANEL BASE
+  ═══════════════════════════════════════════════ */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: panelUp 0.7s cubic-bezier(0.22,1,0.36,1) both;
+  }
+
+  .panel:nth-child(2) { animation-delay: 0.1s; }
+
+  @keyframes panelUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.1rem 1.6rem;
+    border-bottom: 1px solid var(--edge);
+    background: linear-gradient(90deg, rgba(34,215,238,0.05), transparent);
+  }
+
+  .panel-header-icon {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem;
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    border: 1px solid rgba(34,215,238,0.2);
+    flex-shrink: 0;
+  }
+
+  .panel-header h5 {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .panel-body { padding: 1.8rem; }
+
+  /* ═══════════════════════════════════════════════
+     FORM FIELDS
+  ═══════════════════════════════════════════════ */
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.1rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .field-full { grid-column: 1 / -1; }
+
+  .field-wrap { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .field-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--label);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .field-label .req {
+    color: var(--cyan);
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .field-label .opt {
+    background: rgba(139,163,190,0.12);
+    border: 1px solid rgba(139,163,190,0.18);
+    color: var(--muted);
+    font-size: 0.58rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 3px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Override Django-rendered inputs */
+  .input-wrap input,
+  .input-wrap select {
+    width: 100%;
+    background: var(--lift);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 0.85rem 2.8rem 0.85rem 1rem;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+    outline: none;
+    -webkit-appearance: none;
+  }
+
+  .input-wrap input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px var(--cyan-dim), inset 0 1px 0 rgba(255,255,255,0.04);
+    background: #111e38;
+  }
+
+  .input-wrap input::placeholder { color: var(--muted); }
+
+  .input-wrap input.is-valid  { border-color: var(--green); }
+  .input-wrap input.is-valid:focus { box-shadow: 0 0 0 3px var(--green-dim); }
+
+  .eye-btn {
+    position: absolute;
+    right: 0.85rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0.3rem;
+    font-size: 0.85rem;
+    transition: color 0.2s;
+    z-index: 2;
+  }
+  .eye-btn:hover { color: var(--cyan); }
+
+  .field-hint {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-top: 0.15rem;
+  }
+
+  .field-error {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--red);
+    margin-top: 0.2rem;
+  }
+
+  /* ═══════════════════════════════════════════════
+     INFO BANNER
+  ═══════════════════════════════════════════════ */
+  .info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34,215,238,0.18);
+    border-left: 3px solid var(--cyan);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1.6rem;
+    font-family: var(--mono);
+    font-size: 0.77rem;
+    color: var(--label);
+    line-height: 1.6;
+  }
+
+  .info-banner i { color: var(--cyan); margin-top: 0.1rem; flex-shrink: 0; }
+
+  /* ═══════════════════════════════════════════════
+     SUBMIT BUTTON
+  ═══════════════════════════════════════════════ */
+  .submit-btn {
+    width: 100%;
+    padding: 1rem;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #0ecfdb 0%, #0891b2 50%, #0a7ea4 100%);
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s, box-shadow 0.25s;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    margin-top: 1.6rem;
+  }
+
+  .submit-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent 60%);
+    pointer-events: none;
+  }
+
+  .submit-btn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .submit-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 40px rgba(34,215,238,0.4);
+  }
+
+  .submit-btn:hover::after { left: 160%; }
+
+  .submit-btn:active { transform: translateY(-1px); }
+
+  /* ═══════════════════════════════════════════════
+     RIGHT SIDEBAR
+  ═══════════════════════════════════════════════ */
+  .sidebar { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  /* ─── Connection Status ─── */
+  .status-panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: panelUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.15s both;
+  }
+
+  .status-body { padding: 1.4rem 1.6rem; }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .status-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+  }
+
+  .badge-connected {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--green);
+    background: var(--green-dim);
+    border: 1px solid rgba(0,229,160,0.3);
+    border-radius: 50px;
+    padding: 0.3rem 0.9rem;
+    animation: connectedPulse 2.5s ease infinite;
+  }
+
+  .badge-connected::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pingGreen 2.5s ease infinite;
+  }
+
+  @keyframes connectedPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(0,229,160,0); }
+    50%      { box-shadow: 0 0 16px 2px rgba(0,229,160,0.2); }
+  }
+
+  @keyframes pingGreen {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.5); opacity: 0.4; }
+  }
+
+  .badge-disconnected {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--red);
+    background: var(--red-dim);
+    border: 1px solid rgba(255,77,106,0.3);
+    border-radius: 50px;
+    padding: 0.3rem 0.9rem;
+  }
+
+  .badge-disconnected::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--edge);
+  }
+
+  .meta-item-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+  }
+
+  .meta-item-val {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  /* ─── Security tips ─── */
+  .security-panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: panelUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.22s both;
+  }
+
+  .sec-body { padding: 1.2rem 1.6rem 1.4rem; }
+
+  .sec-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--edge);
+    font-size: 0.82rem;
+    color: var(--label);
+    line-height: 1.5;
+  }
+
+  .sec-tip:last-child { border-bottom: none; }
+
+  .sec-tip-icon {
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+
+  .tip-cyan  { background: var(--cyan-dim);  color: var(--cyan);  border: 1px solid rgba(34,215,238,0.18); }
+  .tip-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,229,160,0.18); }
+  .tip-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,48,0.18); }
+  .tip-red   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,77,106,0.18); }
+
+  /* ─── How-to steps ─── */
+  .howto-panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: panelUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.28s both;
+  }
+
+  .howto-body { padding: 1.2rem 1.6rem 1.4rem; }
+
+  .howto-step {
+    display: flex;
+    gap: 0.85rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--edge);
+    align-items: flex-start;
+  }
+
+  .howto-step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34,215,238,0.2);
+    border-radius: 5px;
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+
+  .step-text {
+    font-size: 0.82rem;
+    color: var(--label);
+    line-height: 1.55;
+  }
+
+  .step-text a {
+    color: var(--cyan);
+    text-decoration: underline;
+    text-decoration-color: rgba(34,215,238,0.35);
+    transition: color 0.2s, text-decoration-color 0.2s;
+  }
+
+  .step-text a:hover {
+    color: #7ff0ff;
+    text-decoration-color: rgba(127,240,255,0.6);
+  }
+
+  .step-text strong { color: var(--text); font-weight: 600; }
+
+  .step-pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    background: var(--amber-dim);
+    color: var(--amber);
+    border: 1px solid rgba(255,184,48,0.22);
+    border-radius: 4px;
+    padding: 0.1rem 0.45rem;
+    margin-top: 0.3rem;
+  }
+
+  /* ═══════════════════════════════════════════════
+     HISTORY TABLE
+  ═══════════════════════════════════════════════ */
+  .history-panel {
+    max-width: 1160px;
+    margin: 1.5rem auto 0;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: panelUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.35s both;
+  }
+
+  .broker-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+
+  .broker-table thead th {
+    padding: 0.85rem 1.4rem;
+    text-align: left;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--edge);
+    background: linear-gradient(90deg, rgba(34,215,238,0.04), transparent);
+    white-space: nowrap;
+  }
+
+  .broker-table tbody td {
+    padding: 0.95rem 1.4rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--edge);
+    vertical-align: middle;
+  }
+
+  .broker-table tbody tr:last-child td { border-bottom: none; }
+
+  .broker-table tbody tr {
+    transition: background 0.2s;
+  }
+
+  .broker-table tbody tr:hover {
+    background: rgba(34,215,238,0.04);
+  }
+
+  .tbl-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.28rem 0.8rem;
+    border-radius: 50px;
+  }
+
+  .tbl-badge.active {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(0,229,160,0.28);
+  }
+
+  .tbl-badge.inactive {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255,77,106,0.28);
+  }
+
+  .btn-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--cyan);
+    background: var(--cyan-dim);
+    border: 1px solid rgba(34,215,238,0.22);
+    border-radius: 7px;
+    padding: 0.38rem 0.9rem;
+    text-decoration: none;
+    transition: all 0.22s;
+  }
+
+  .btn-edit:hover {
+    background: rgba(34,215,238,0.2);
+    color: var(--cyan);
+    box-shadow: 0 4px 14px rgba(34,215,238,0.2);
+    transform: translateY(-1px);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 3.5rem 2rem;
+    color: var(--muted);
+  }
+
+  .empty-state i {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    display: block;
+    opacity: 0.3;
+  }
+
+  .empty-state p {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+
+  /* ═══════════════════════════════════════════════
+     DECORATIVE LINES
+  ═══════════════════════════════════════════════ */
+  .scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0;
+    animation: scanSweep 4s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes scanSweep {
+    0%,100% { opacity: 0; top: 0; }
+    10%      { opacity: 0.7; }
+    90%      { opacity: 0.7; }
+    100%     { opacity: 0; top: 100%; }
+  }
+
+  /* ═══════════════════════════════════════════════
+     RESPONSIVE
+  ═══════════════════════════════════════════════ */
+  @media (max-width: 960px) {
+    .broker-layout {
+      grid-template-columns: 1fr;
+    }
+    .sidebar { order: -1; }
+    .status-panel, .security-panel, .howto-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .field-grid { grid-template-columns: 1fr; }
+    .status-panel, .security-panel, .howto-panel {
+      display: block;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="broker-page">
+
+  <!-- HERO -->
+  <div class="broker-hero">
+    <div class="hero-chip">Secure Connection Layer</div>
+    <h1>Connect Your <span>Broker</span></h1>
+    <p>Securely link Zerodha to unlock automated NIFTY trading</p>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="broker-layout">
+
+    <!-- ════ LEFT: FORM ════ -->
+    <div class="panel" style="position:relative; overflow:hidden;">
+      <div class="scan-line"></div>
+
+      <div class="panel-header">
+        <div class="panel-header-icon"><i class="fas fa-plug"></i></div>
+        <h5>Zerodha Credentials</h5>
+      </div>
+
+      <div class="panel-body">
+        <div class="info-banner">
+          <i class="fas fa-shield-alt"></i>
+          <span>Your credentials are encrypted and stored securely. They are used exclusively to authenticate with Zerodha's API — never shared or logged.</span>
+        </div>
+
+        <form method="post">
+          {% csrf_token %}
+
+          <div class="field-grid">
+
+            <!-- API Key -->
+            <div class="field-wrap">
+              <label class="field-label">API Key <span class="req">*</span></label>
+              <div class="input-wrap">
+                {{ form.api_key }}
+              </div>
+              {% if form.api_key.errors %}<div class="field-error">{{ form.api_key.errors }}</div>{% endif %}
+            </div>
+
+            <!-- Secret Key -->
+            <div class="field-wrap">
+              <label class="field-label">Secret Key <span class="req">*</span></label>
+              <div class="input-wrap">
+                {{ form.secret_key }}
+                <button type="button" class="eye-btn" id="toggleSecret"><i class="fas fa-eye"></i></button>
+              </div>
+              {% if form.secret_key.errors %}<div class="field-error">{{ form.secret_key.errors }}</div>{% endif %}
+            </div>
+
+            <!-- Zerodha User ID -->
+            <div class="field-wrap">
+              <label class="field-label">Zerodha User ID <span class="req">*</span></label>
+              <div class="input-wrap">
+                {{ form.zerodha_user_id }}
+              </div>
+              {% if form.zerodha_user_id.errors %}<div class="field-error">{{ form.zerodha_user_id.errors }}</div>{% endif %}
+            </div>
+
+            <!-- Password -->
+            <div class="field-wrap">
+              <label class="field-label">Password <span class="req">*</span></label>
+              <div class="input-wrap">
+                {{ form.password }}
+                <button type="button" class="eye-btn" id="togglePassword"><i class="fas fa-eye"></i></button>
+              </div>
+              {% if form.password.errors %}<div class="field-error">{{ form.password.errors }}</div>{% endif %}
+            </div>
+
+            <!-- TOTP (full width) -->
+            <div class="field-wrap field-full">
+              <label class="field-label">TOTP Secret <span class="opt">Optional</span></label>
+              <div class="input-wrap">
+                {{ form.totp }}
+              </div>
+              <span class="field-hint">Recommended for fully automated trading. Get it from: Zerodha Console → Profile → Two Factor Authentication → TOTP</span>
+              {% if form.totp.errors %}<div class="field-error">{{ form.totp.errors }}</div>{% endif %}
+            </div>
+
+          </div>
+
+          <button type="submit" class="submit-btn">
+            <i class="fas fa-satellite-dish me-2"></i> Save &amp; Connect Broker
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ════ RIGHT: SIDEBAR ════ -->
+    <div class="sidebar">
+
+      <!-- Status -->
+      <div class="status-panel">
+        <div class="panel-header">
+          <div class="panel-header-icon"><i class="fas fa-signal"></i></div>
+          <h5>Connection Status</h5>
+        </div>
+        <div class="status-body">
+          <div class="status-row">
+            <span class="status-label">Zerodha</span>
+            {% if has_credentials %}
+              <span class="badge-connected">Connected</span>
+            {% else %}
+              <span class="badge-disconnected"><i class="fas fa-times-circle" style="font-size:0.6rem"></i> Offline</span>
+            {% endif %}
+          </div>
+          <div class="meta-item">
+            <span class="meta-item-label">Last Updated</span>
+            <span class="meta-item-val">
+              {% if brokers.first %}{{ brokers.first.updated_at|date:"d M Y · H:i" }}{% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-item-label">Broker Records</span>
+            <span class="meta-item-val">{{ brokers|length }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security Tips -->
+      <div class="security-panel">
+        <div class="panel-header">
+          <div class="panel-header-icon"><i class="fas fa-lock"></i></div>
+          <h5>Security Tips</h5>
+        </div>
+        <div class="sec-body">
+          <div class="sec-tip">
+            <div class="sec-tip-icon tip-cyan"><i class="fas fa-user-secret"></i></div>
+            <span>Never share your API credentials with anyone, including support staff.</span>
+          </div>
+          <div class="sec-tip">
+            <div class="sec-tip-icon tip-green"><i class="fas fa-key"></i></div>
+            <span>Use a strong, unique password for your Zerodha account.</span>
+          </div>
+          <div class="sec-tip">
+            <div class="sec-tip-icon tip-amber"><i class="fas fa-mobile-alt"></i></div>
+            <span>Always enable 2FA on Zerodha for maximum security.</span>
+          </div>
+          <div class="sec-tip">
+            <div class="sec-tip-icon tip-red"><i class="fas fa-chart-line"></i></div>
+            <span>Monitor your account regularly for unexpected activity.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- How To Get Credentials -->
+      <div class="howto-panel">
+        <div class="panel-header">
+          <div class="panel-header-icon" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(255,184,48,0.2)"><i class="fas fa-map-signs"></i></div>
+          <h5>How to Get Credentials</h5>
+        </div>
+        <div class="howto-body">
+          <div class="howto-step">
+            <div class="step-num">1</div>
+            <div class="step-text">Login to <a href="https://developers.kite.trade/login" target="_blank" rel="noopener noreferrer">Zerodha Developer Console</a> with your Kite credentials.</div>
+          </div>
+          <div class="howto-step">
+            <div class="step-num">2</div>
+            <div class="step-text">Go to <strong>My Apps</strong> → Create a new app or select an existing one.</div>
+          </div>
+          <div class="howto-step">
+            <div class="step-num">3</div>
+            <div class="step-text">Copy your <strong>API Key</strong> and <strong>API Secret</strong> from the app dashboard.</div>
+          </div>
+          <div class="howto-step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              For live data &amp; automated trading, subscribe to the <strong>Connect</strong> plan.
+              <span class="step-pill">₹500 / month · auto-renews</span>
+            </div>
+          </div>
+          <div class="howto-step">
+            <div class="step-num">5</div>
+            <div class="step-text">User ID &amp; Password = your regular Kite login credentials.</div>
+          </div>
+          <div class="howto-step">
+            <div class="step-num">6</div>
+            <div class="step-text">TOTP Secret: Console → Profile → <strong>Two Factor Authentication</strong> → TOTP</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /sidebar -->
+  </div><!-- /broker-layout -->
+
+  <!-- HISTORY TABLE -->
+  <div class="history-panel">
+    <div class="panel-header">
+      <div class="panel-header-icon"><i class="fas fa-history"></i></div>
+      <h5>Connection History</h5>
+    </div>
+
+    {% if brokers %}
+      <div style="overflow-x:auto;">
+        <table class="broker-table">
+          <thead>
+            <tr>
+              <th>Broker</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Last Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for broker in brokers %}
+            <tr>
+              <td>{{ broker.broker_name }}</td>
+              <td>
+                {% if broker.is_active %}
+                  <span class="tbl-badge active"><i class="fas fa-circle" style="font-size:0.45rem"></i> Active</span>
+                {% else %}
+                  <span class="tbl-badge inactive"><i class="fas fa-circle" style="font-size:0.45rem"></i> Inactive</span>
+                {% endif %}
+              </td>
+              <td style="color:var(--label)">{{ broker.created_at|date:"d M Y · H:i" }}</td>
+              <td style="color:var(--label)">{{ broker.updated_at|date:"d M Y · H:i" }}</td>
+              <td>
+                <a href="#" class="btn-edit"><i class="fas fa-pen"></i> Edit</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <i class="fas fa-server"></i>
+        <p>No broker connections recorded yet.<br>Connect Zerodha above to get started.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+  // ── Style all Django-rendered inputs ──
+  document.querySelectorAll('.input-wrap input, .input-wrap select').forEach(el => {
+    // Let CSS handle the styling, just ensure types are right
+  });
+
+  // ── Set password fields to type=password initially ──
+  const pwField     = document.getElementById('id_password');
+  const secretField = document.getElementById('id_secret_key');
+  if (pwField)     pwField.type     = 'password';
+  if (secretField) secretField.type = 'password';
+
+  // ── Toggle password visibility ──
+  function setupToggle(btnId, fieldEl) {
+    const btn = document.getElementById(btnId);
+    if (!btn || !fieldEl) return;
+    btn.addEventListener('click', function () {
+      const isHidden = fieldEl.type === 'password';
+      fieldEl.type = isHidden ? 'text' : 'password';
+      this.querySelector('i').className = isHidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+    });
+  }
+
+  setupToggle('togglePassword', pwField);
+  setupToggle('toggleSecret',   secretField);
+
+  // ── Live field validation glow ──
+  document.querySelectorAll('.input-wrap input').forEach(input => {
+    input.addEventListener('input', function () {
+      if (this.value.trim().length > 0) {
+        this.style.borderColor = 'var(--cyan)';
+      } else {
+        this.style.borderColor = '';
+      }
+    });
+  });
+
+  // ── Submit button loading state ──
+  const form = document.querySelector('form[method="post"]');
+  const btn  = document.querySelector('.submit-btn');
+  if (form && btn) {
+    form.addEventListener('submit', function () {
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Connecting…';
+      btn.style.opacity = '0.75';
+      btn.disabled = true;
+    });
+  }
+});
+</script>
+{% endblock %}

@@ -719,46 +719,88 @@ def user_logout(request):
     return redirect('home')
 
 
+# @login_required
+# def strategies_list(request):
+#     context = {
+#         'strategies': [
+#             {
+#                 'name': 'Short Strangle',
+#                 'description': 'Hedged weekly NIFTY options selling with defensive adjustments',
+#                 'status': 'active',
+#                 'url_name': 'short_strangle_detail',
+#                 'icon': 'fas fa-scissors',
+#                 'color': 'success'
+#             },
+#             {
+#                 'name': 'Delta BTCUSD',
+#                 'description': 'Delta-neutral perpetual futures strategy on BTC/USD',
+#                 'status': 'coming_soon',
+#                 'url_name': 'delta_btcusd_detail',
+#                 'icon': 'fab fa-bitcoin',
+#                 'color': 'secondary'
+#             },
+#             {
+#                 'name': 'Nifty Buy',
+#                 'description': 'Momentum-based long entries on NIFTY with trend filters',
+#                 'status': 'coming_soon',
+#                 'url_name': 'nifty_buy_detail',
+#                 'icon': 'fas fa-arrow-up',
+#                 'color': 'secondary'
+#             },
+#             {
+#                 'name': 'Nifty Sell',
+#                 'description': 'Counter-trend short entries on NIFTY with mean-reversion signals',
+#                 'status': 'coming_soon',
+#                 'url_name': 'nifty_sell_detail',
+#                 'icon': 'fas fa-arrow-down',
+#                 'color': 'secondary'
+#             },
+#         ]
+#     }
+#     return render(request, 'trading/strategies_list.html', context)
+
 @login_required
 def strategies_list(request):
     context = {
         'strategies': [
             {
                 'name': 'Short Strangle',
-                'description': 'Hedged weekly NIFTY options selling with defensive adjustments',
+                'icon': 'fas fa-balance-scale',
                 'status': 'active',
                 'url_name': 'short_strangle_detail',
-                'icon': 'fas fa-scissors',
-                'color': 'success'
+                'description': 'Sell OTM Call & Put options to collect premium. Profits from time decay in range-bound markets.',
             },
             {
-                'name': 'Delta BTCUSD',
-                'description': 'Delta-neutral perpetual futures strategy on BTC/USD',
+                'name': 'Nifty Call Strategy',
+                'icon': 'fas fa-chart-line',
                 'status': 'coming_soon',
-                'url_name': 'delta_btcusd_detail',
-                'icon': 'fab fa-bitcoin',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Bullish directional strategy using ATM/ITM calls with defined risk. Perfect for trending markets.',
             },
             {
-                'name': 'Nifty Buy',
-                'description': 'Momentum-based long entries on NIFTY with trend filters',
+                'name': 'Nifty Put Strategy',
+                'icon': 'fas fa-chart-bar',
                 'status': 'coming_soon',
-                'url_name': 'nifty_buy_detail',
-                'icon': 'fas fa-arrow-up',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Bearish directional strategy for downtrending markets. Defined risk with asymmetric reward.',
             },
             {
-                'name': 'Nifty Sell',
-                'description': 'Counter-trend short entries on NIFTY with mean-reversion signals',
+                'name': 'Positional Algo',
+                'icon': 'fas fa-crosshairs',
                 'status': 'coming_soon',
-                'url_name': 'nifty_sell_detail',
-                'icon': 'fas fa-arrow-down',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Swing trading strategy holding positions for 3-10 days. Captures larger market moves.',
             },
-        ]
+            {
+                'name': 'Intraday Algo',
+                'icon': 'fas fa-bolt',
+                'status': 'coming_soon',
+                'url_name': '',
+                'description': 'High-frequency intraday scalping. Multiple trades per day with quick profit booking.',
+            },
+       ]
     }
     return render(request, 'trading/strategies_list.html', context)
-
 
 @login_required
 def about_us(request):
