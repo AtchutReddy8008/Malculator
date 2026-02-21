@@ -1,0 +1,745 @@
+{% extends 'base.html' %}
+
+{% block title %}About Us - Trade with Naman{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=Bricolage+Grotesque:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #05080f;
+    --text: #f0f4ff;
+    --muted: #6b7a99;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Bricolage Grotesque', sans-serif;
+
+    --cyan:    #06b6d4;
+    --violet:  #8b5cf6;
+    --rose:    #f43f5e;
+    --amber:   #f59e0b;
+    --green:   #10b981;
+    --pink:    #ec4899;
+    --indigo:  #6366f1;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .about-page {
+    font-family: var(--display);
+    background: var(--bg);
+    overflow-x: hidden;
+  }
+
+  /* ═══════════════════════════════════
+     HERO
+  ═══════════════════════════════════ */
+  .about-hero {
+    position: relative;
+    min-height: 92vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 6rem 1.5rem 4rem;
+    overflow: hidden;
+  }
+
+  /* animated mesh background */
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 30%, rgba(139,92,246,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 70%, rgba(244,63,94,0.14) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 40% at 50% 10%, rgba(6,182,212,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse 70% 60% at 10% 80%, rgba(16,185,129,0.10) 0%, transparent 55%);
+    animation: meshDrift 12s ease-in-out infinite alternate;
+  }
+
+  @keyframes meshDrift {
+    from { filter: hue-rotate(0deg); }
+    to   { filter: hue-rotate(30deg); }
+  }
+
+  /* floating orbs */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.25;
+    animation: orbFloat 8s ease-in-out infinite alternate;
+  }
+
+  .orb-1 { width: 500px; height: 500px; background: var(--violet); top: -15%; left: -10%; animation-delay: 0s; }
+  .orb-2 { width: 350px; height: 350px; background: var(--cyan);   bottom: 5%;  right: -8%;  animation-delay: -3s; }
+  .orb-3 { width: 280px; height: 280px; background: var(--rose);   top: 40%;   left: 55%;   animation-delay: -5s; }
+
+  @keyframes orbFloat {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(30px, 40px) scale(1.1); }
+  }
+
+  .hero-content { position: relative; z-index: 2; max-width: 820px; }
+
+  .hero-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(139,92,246,0.12);
+    border: 1px solid rgba(139,92,246,0.35);
+    border-radius: 50px;
+    padding: 0.4rem 1.2rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #c4b5fd;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1.8rem;
+    animation: chipIn 0.8s ease both;
+  }
+
+  .hero-chip .blink {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #a78bfa;
+    animation: blink 1.4s infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+  @keyframes chipIn { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
+
+  .hero-h1 {
+    font-size: clamp(3rem, 8vw, 6.5rem);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    margin-bottom: 1.4rem;
+    animation: heroIn 0.9s ease 0.1s both;
+  }
+
+  @keyframes heroIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+  .hero-h1 .grad-cyan   { background: linear-gradient(90deg,#06b6d4,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero-h1 .grad-violet { background: linear-gradient(90deg,#8b5cf6,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero-h1 .grad-rose   { background: linear-gradient(90deg,#f43f5e,#fb7185); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+  .hero-p {
+    font-size: 1.2rem;
+    color: #8a9ab8;
+    line-height: 1.7;
+    max-width: 600px;
+    margin: 0 auto 2.5rem;
+    animation: heroIn 0.9s ease 0.2s both;
+  }
+
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    flex-wrap: wrap;
+    animation: heroIn 0.9s ease 0.3s both;
+  }
+
+  .hstat { text-align: center; }
+  .hstat-val {
+    font-family: var(--mono);
+    font-size: 2rem;
+    font-weight: 700;
+    display: block;
+  }
+  .hstat-lbl { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+
+  /* scroll indicator */
+  .scroll-hint {
+    position: absolute;
+    bottom: 2.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: fadeIn 1s ease 1s both;
+  }
+
+  .scroll-hint .arrow { animation: bounce 1.8s infinite; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+  /* ═══════════════════════════════════
+     OBSESSION SECTION
+  ═══════════════════════════════════ */
+  .obsession-section {
+    padding: 7rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-eyebrow {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 1rem;
+    padding: 0.3rem 0.9rem;
+    border-radius: 50px;
+  }
+
+  .ey-cyan   { color: var(--cyan);   background: rgba(6,182,212,0.1);   border: 1px solid rgba(6,182,212,0.25); }
+  .ey-violet { color: #c4b5fd;       background: rgba(139,92,246,0.1);  border: 1px solid rgba(139,92,246,0.25); }
+  .ey-green  { color: #34d399;       background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.25); }
+  .ey-rose   { color: #fda4af;       background: rgba(244,63,94,0.1);   border: 1px solid rgba(244,63,94,0.25); }
+
+  .obsession-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  .obs-left h2 {
+    font-size: clamp(2.2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+  }
+
+  .obs-left h2 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .obs-left p {
+    font-size: 1.05rem;
+    color: #8a9ab8;
+    line-height: 1.8;
+    margin-bottom: 1.2rem;
+  }
+
+  .obs-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .obs-pill {
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 1.2rem 1.5rem;
+    transition: all 0.35s ease;
+  }
+
+  .obs-pill:hover {
+    background: rgba(255,255,255,0.05);
+    transform: translateX(6px);
+  }
+
+  .obs-pill:nth-child(1) { border-left: 3px solid var(--cyan); }
+  .obs-pill:nth-child(2) { border-left: 3px solid var(--violet); }
+  .obs-pill:nth-child(3) { border-left: 3px solid var(--rose); }
+  .obs-pill:nth-child(4) { border-left: 3px solid var(--green); }
+
+  .obs-pill-icon { font-size: 1.8rem; flex-shrink: 0; }
+  .obs-pill-text strong { display: block; color: var(--text); font-size: 0.95rem; margin-bottom: 0.2rem; }
+  .obs-pill-text span   { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+
+  /* ═══════════════════════════════════
+     VALUES GRID
+  ═══════════════════════════════════ */
+  .values-section {
+    padding: 5rem 1.5rem 7rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .section-h2 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    margin-bottom: 0.8rem;
+  }
+
+  .section-sub {
+    color: var(--muted);
+    font-size: 1rem;
+    margin-bottom: 3.5rem;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .values-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .val-card {
+    border-radius: 20px;
+    padding: 2.2rem 1.8rem;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+    opacity: 0;
+    animation: cardPop 0.5s ease forwards;
+  }
+
+  .val-card:nth-child(1) { animation-delay:0.05s; background: linear-gradient(145deg, rgba(6,182,212,0.08), rgba(6,182,212,0.02)); }
+  .val-card:nth-child(2) { animation-delay:0.15s; background: linear-gradient(145deg, rgba(139,92,246,0.10), rgba(139,92,246,0.02)); }
+  .val-card:nth-child(3) { animation-delay:0.25s; background: linear-gradient(145deg, rgba(244,63,94,0.08), rgba(244,63,94,0.02)); }
+  .val-card:nth-child(4) { animation-delay:0.35s; background: linear-gradient(145deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02)); }
+
+  @keyframes cardPop { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+  .val-card:hover { transform: translateY(-8px); }
+  .val-card:nth-child(1):hover { box-shadow: 0 20px 60px rgba(6,182,212,0.2); border-color: rgba(6,182,212,0.3); }
+  .val-card:nth-child(2):hover { box-shadow: 0 20px 60px rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.3); }
+  .val-card:nth-child(3):hover { box-shadow: 0 20px 60px rgba(244,63,94,0.2); border-color: rgba(244,63,94,0.3); }
+  .val-card:nth-child(4):hover { box-shadow: 0 20px 60px rgba(16,185,129,0.2); border-color: rgba(16,185,129,0.3); }
+
+  .val-icon-wrap {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+    margin-bottom: 1.4rem;
+  }
+
+  .ic-cyan   { background: rgba(6,182,212,0.15);   color: var(--cyan);   border: 1px solid rgba(6,182,212,0.3); }
+  .ic-violet { background: rgba(139,92,246,0.15);  color: #a78bfa;       border: 1px solid rgba(139,92,246,0.3); }
+  .ic-rose   { background: rgba(244,63,94,0.15);   color: #fb7185;       border: 1px solid rgba(244,63,94,0.3); }
+  .ic-green  { background: rgba(16,185,129,0.15);  color: #34d399;       border: 1px solid rgba(16,185,129,0.3); }
+
+  .val-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 0.7rem; }
+  .val-desc  { font-size: 0.88rem; color: #6b7a99; line-height: 1.65; }
+
+  /* corner glow */
+  .val-card::after {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    opacity: 0.12;
+    filter: blur(30px);
+  }
+
+  .val-card:nth-child(1)::after { background: var(--cyan); }
+  .val-card:nth-child(2)::after { background: var(--violet); }
+  .val-card:nth-child(3)::after { background: var(--rose); }
+  .val-card:nth-child(4)::after { background: var(--green); }
+
+  /* ═══════════════════════════════════
+     ORIGIN STORY
+  ═══════════════════════════════════ */
+  .origin-section {
+    padding: 5rem 1.5rem 6rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .origin-inner {
+    background: linear-gradient(135deg, rgba(14,20,40,0.9), rgba(20,12,40,0.9));
+    border: 1px solid rgba(139,92,246,0.15);
+    border-radius: 24px;
+    padding: 4rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .origin-inner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--violet), var(--cyan), var(--green), var(--rose));
+  }
+
+  .origin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 4rem;
+    align-items: start;
+  }
+
+  .origin-left h2 {
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+    margin-bottom: 1.5rem;
+  }
+
+  .origin-left h2 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--amber), var(--rose));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .origin-left p {
+    font-size: 1rem;
+    color: #7a8ea8;
+    line-height: 1.8;
+    margin-bottom: 1rem;
+  }
+
+  .origin-right { display: flex; flex-direction: column; gap: 1rem; }
+
+  .trust-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.2rem 1.4rem;
+    background: rgba(255,255,255,0.025);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.05);
+    transition: all 0.3s ease;
+  }
+
+  .trust-item:hover {
+    background: rgba(255,255,255,0.04);
+    transform: translateX(4px);
+  }
+
+  .trust-item:nth-child(1) .ti-icon { color: var(--cyan); }
+  .trust-item:nth-child(2) .ti-icon { color: var(--violet); }
+  .trust-item:nth-child(3) .ti-icon { color: var(--amber); }
+  .trust-item:nth-child(4) .ti-icon { color: var(--green); }
+  .trust-item:nth-child(5) .ti-icon { color: var(--rose); }
+
+  .ti-icon { font-size: 1.3rem; margin-top: 0.1rem; flex-shrink: 0; }
+  .ti-text strong { display: block; color: var(--text); font-size: 0.92rem; margin-bottom: 0.2rem; }
+  .ti-text span   { color: var(--muted); font-size: 0.81rem; line-height: 1.5; }
+
+  /* ═══════════════════════════════════
+     CTA SECTION
+  ═══════════════════════════════════ */
+  .cta-section {
+    padding: 6rem 1.5rem 8rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 80% at 50% 50%, rgba(99,102,241,0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 50% at 20% 30%, rgba(6,182,212,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 50% at 80% 70%, rgba(244,63,94,0.07) 0%, transparent 60%);
+  }
+
+  .cta-inner {
+    position: relative;
+    z-index: 2;
+    max-width: 640px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 28px;
+    padding: 4rem 3rem;
+    backdrop-filter: blur(16px);
+  }
+
+  .cta-inner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 28px 28px 0 0;
+    background: linear-gradient(90deg, var(--cyan), var(--violet), var(--rose));
+  }
+
+  .cta-emoji { font-size: 3.5rem; display: block; margin-bottom: 1rem; }
+
+  .cta-h2 {
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    margin-bottom: 0.8rem;
+  }
+
+  .cta-sub {
+    color: var(--muted);
+    font-size: 1rem;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+  }
+
+  .btn-cta-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem 2.5rem;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff;
+    border-radius: 14px;
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.35s ease;
+    border: none;
+    cursor: pointer;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .btn-cta-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 40px rgba(99,102,241,0.5);
+    color: #fff;
+  }
+
+  .cta-note {
+    display: block;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-family: var(--mono);
+    margin-top: 1.2rem;
+    letter-spacing: 0.04em;
+  }
+
+  /* ═══════════════════════════════════
+     RESPONSIVE
+  ═══════════════════════════════════ */
+  @media (max-width: 900px) {
+    .obsession-grid, .origin-grid { grid-template-columns: 1fr; }
+    .origin-inner { padding: 2.5rem 1.8rem; }
+    .cta-inner    { padding: 3rem 1.8rem; }
+  }
+
+  @media (max-width: 600px) {
+    .hero-stats  { gap: 1.8rem; }
+    .values-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="about-page">
+
+  <!-- ── HERO ── -->
+  <section class="about-hero">
+    <div class="hero-bg"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="hero-content">
+      <div class="hero-chip">
+        <span class="blink"></span>
+        Built in Hyderabad · Running Live
+      </div>
+
+      <h1 class="hero-h1">
+        Trade with<br>
+        <span class="grad-cyan">Machine</span>
+        <span class="grad-violet"> Precision.</span><br>
+        <span class="grad-rose">Zero Emotion.</span>
+      </h1>
+
+      <p class="hero-p">
+        We exist to give serious Indian traders the algorithmic edge institutions guard jealously — now finally in your hands.
+      </p>
+
+      <div class="hero-stats">
+        <div class="hstat">
+          <span class="hstat-val" style="color:var(--cyan)">5+</span>
+          <span class="hstat-lbl">Live Strategies</span>
+        </div>
+        <div class="hstat">
+          <span class="hstat-val" style="color:var(--violet)">72%</span>
+          <span class="hstat-lbl">Avg Win Rate</span>
+        </div>
+        <div class="hstat">
+          <span class="hstat-val" style="color:var(--green)">24/7</span>
+          <span class="hstat-lbl">Automated</span>
+        </div>
+        <div class="hstat">
+          <span class="hstat-val" style="color:var(--rose)">₹0</span>
+          <span class="hstat-lbl">Emotional Cost</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="scroll-hint">
+      <span>scroll</span>
+      <i class="fas fa-chevron-down arrow"></i>
+    </div>
+  </section>
+
+  <!-- ── OBSESSION ── -->
+  <section class="obsession-section">
+    <div class="obsession-grid">
+      <div class="obs-left">
+        <span class="section-eyebrow ey-cyan">Our Obsession</span>
+        <h2>The <em>unfair advantage</em> institutions never wanted you to have.</h2>
+        <p>We don't promise moonshots. We deliver mathematically repeatable survival + growth. Cycle after cycle. Year after year.</p>
+        <p>Pure algorithmic execution. Ferocious risk control. Zero tolerance for emotional leakage.</p>
+      </div>
+      <div class="obs-right">
+        <div class="obs-pill">
+          <span class="obs-pill-icon">🧠</span>
+          <div class="obs-pill-text">
+            <strong>Data over instinct, always</strong>
+            <span>Every entry, every exit — dictated by backtested rules, never a feeling.</span>
+          </div>
+        </div>
+        <div class="obs-pill">
+          <span class="obs-pill-icon">🛡️</span>
+          <div class="obs-pill-text">
+            <strong>Capital preservation is sacred</strong>
+            <span>The risk engine was written before a single profit target was set.</span>
+          </div>
+        </div>
+        <div class="obs-pill">
+          <span class="obs-pill-icon">⚡</span>
+          <div class="obs-pill-text">
+            <strong>Execution without fatigue</strong>
+            <span>No burnout, no second-guessing. Relentless, precise, 100% obedient.</span>
+          </div>
+        </div>
+        <div class="obs-pill">
+          <span class="obs-pill-icon">📊</span>
+          <div class="obs-pill-text">
+            <strong>Radical transparency</strong>
+            <span>Live numbers. Open logic. No marketing spin, no hidden magic.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── VALUES ── -->
+  <section class="values-section">
+    <span class="section-eyebrow ey-violet">Core Philosophy</span>
+    <h2 class="section-h2">What We Stand For</h2>
+    <p class="section-sub">Four principles that govern every line of code we write and every trade we execute.</p>
+
+    <div class="values-grid">
+      <div class="val-card">
+        <div class="val-icon-wrap ic-cyan"><i class="fas fa-brain"></i></div>
+        <div class="val-title">Mind Without Weakness</div>
+        <p class="val-desc">Fear dies here. Greed dies here. Only data, only rules, only math. The algorithm never panics — and neither does your portfolio.</p>
+      </div>
+
+      <div class="val-card">
+        <div class="val-icon-wrap ic-violet"><i class="fas fa-shield-alt"></i></div>
+        <div class="val-title">Capital Above Everything</div>
+        <p class="val-desc">Profit is secondary. Not losing what we already have is sacred. Risk management isn't a feature — it's the entire foundation.</p>
+      </div>
+
+      <div class="val-card">
+        <div class="val-icon-wrap ic-rose"><i class="fas fa-robot"></i></div>
+        <div class="val-title">Machine That Never Sleeps</div>
+        <p class="val-desc">While you rest, the algorithm monitors, adjusts, and executes with microsecond precision. Zero human error, maximum consistency.</p>
+      </div>
+
+      <div class="val-card">
+        <div class="val-icon-wrap ic-green"><i class="fas fa-chart-line"></i></div>
+        <div class="val-title">Truth Without Filter</div>
+        <p class="val-desc">Live numbers. Open logic. No marketing spin, no hidden magic. If something underperforms, you'll know — in real time.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ORIGIN ── -->
+  <section class="origin-section">
+    <div class="origin-inner">
+      <div class="origin-grid">
+        <div class="origin-left">
+          <span class="section-eyebrow ey-rose">Our Origin</span>
+          <h2>Born in the <em>trenches</em> of Indian markets.</h2>
+          <p>Hyderabad nights. Red screens. Sleepless dawns. A handful of traders, quants and engineers who got fed up losing to themselves.</p>
+          <p>So we stopped. We coded. We tested until it bled green — consistently. This is not a startup story about funding and valuation. It's a war story about survival.</p>
+        </div>
+        <div class="origin-right">
+          <div class="trust-item">
+            <i class="fas fa-check-circle ti-icon"></i>
+            <div class="ti-text">
+              <strong>Built from actual losing accounts</strong>
+              <span>Not fantasy backtests on cherry-picked windows — real money, real pain, real lessons.</span>
+            </div>
+          </div>
+          <div class="trust-item">
+            <i class="fas fa-lock ti-icon"></i>
+            <div class="ti-text">
+              <strong>Risk engine written first</strong>
+              <span>Stop-loss and position sizing architecture came before any profit logic. Always.</span>
+            </div>
+          </div>
+          <div class="trust-item">
+            <i class="fas fa-bolt ti-icon"></i>
+            <div class="ti-text">
+              <strong>Survived extreme volatility</strong>
+              <span>Flash crashes, election nights, global meltdowns — our drawdown controls held firm.</span>
+            </div>
+          </div>
+          <div class="trust-item">
+            <i class="fas fa-eye ti-icon"></i>
+            <div class="ti-text">
+              <strong>Dashboard of truth</strong>
+              <span>Shows reality — not just pretty equity curves. Including the bad days.</span>
+            </div>
+          </div>
+          <div class="trust-item">
+            <i class="fas fa-infinity ti-icon"></i>
+            <div class="ti-text">
+              <strong>Drawdown control is religion</strong>
+              <span>Not an afterthought bolted on at the end — it's the core loop of every strategy.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <div class="cta-bg"></div>
+    <div class="cta-inner">
+      <span class="cta-emoji">🚀</span>
+      <h2 class="cta-h2">Ready to Trade Like a Machine?</h2>
+      <p class="cta-sub">Kill emotion. Start now. Your edge has been waiting for you.</p>
+
+      {% if not user.is_authenticated %}
+        <a href="{% url 'signup' %}" class="btn-cta-primary">
+          <i class="fas fa-terminal"></i> Create Free Account
+        </a>
+        <span class="cta-note">Free trial · No credit card · Live in under 5 minutes</span>
+      {% else %}
+        <a href="{% url 'dashboard' %}" class="btn-cta-primary">
+          <i class="fas fa-chart-line"></i> Enter the System
+        </a>
+        <span class="cta-note">Your edge is waiting.</span>
+      {% endif %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

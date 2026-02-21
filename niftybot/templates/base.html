@@ -94,7 +94,7 @@
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--glass-border);
             padding: 0.5rem 0;                    /* smaller vertical padding */
-            height: 82px;                         /* ← FIXED NAVBAR HEIGHT */
+            height: 60px;                         /* ← FIXED NAVBAR HEIGHT */
             min-height: unset !important;
             z-index: 1000;
         }
@@ -108,7 +108,7 @@
         }
 
         .brand-logo {
-            height: 200px;                        /* ← YOU CAN CHANGE THIS FREELY (bigger = more overflow) */
+            height: 120px;                        /* ← YOU CAN CHANGE THIS FREELY (bigger = more overflow) */
             width: auto;
             margin-top: 42px;                    /* ← negative margin = logo overflows downward */
             filter: drop-shadow(0 0 6px rgba(0, 255, 157, 0.4));
@@ -314,8 +314,9 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    {% if user.is_authenticated %}
+                {% if user.is_authenticated %}
+                    <!-- Logged-in: right-aligned as before -->
+                    <ul class="navbar-nav ms-auto align-items-center">
                         <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}"><i class="fas fa-tachometer-alt me-1"></i> Dashboard</a></li>
                         <li class="nav-item"><a class="nav-link" href="{% url 'broker' %}"><i class="fas fa-database me-1"></i> Broker credentials</a></li>
                         <li class="nav-item"><a class="nav-link" href="{% url 'pnl_calendar' %}"><i class="fas fa-calendar-alt me-1"></i> Portfolio</a></li>
@@ -335,12 +336,25 @@
                                 </form>
                             </ul>
                         </li>
-                    {% else %}
+                    </ul>
+                {% else %}
+                    <!-- Not logged in: Home + middle group centered, Login button in right corner -->
+                    <ul class="navbar-nav mx-auto align-items-center">
                         <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
-                        <li class="nav-item"><a class="nav-link nav-auth-btn px-3 mx-lg-2" href="{% url 'auth' %}?mode=login">Login</a></li>
-                        {% comment %} <li class="nav-item"><a class="nav-link btn btn-primary text-black px-4 ms-lg-2" href="{% url 'signup' %}" style="color: #000 !important;">Sign Up</a></li> {% endcomment %}
-                    {% endif %}
-                </ul>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'public_algorithms' %}">Algorithms</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'public_brokers' %}">Broker Credentials</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'public_pnl' %}">Portfolio</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{% url 'public_about' %}">About Us</a></li>
+                    </ul>
+
+                    <ul class="navbar-nav ms-auto align-items-center">
+                        <li class="nav-item">
+                            <a class="nav-link nav-auth-btn px-4" href="{% url 'auth' %}?mode=login">
+                                Login
+                            </a>
+                        </li>
+                    </ul>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -472,4 +486,3 @@
     {% block extra_js %}{% endblock %}
 </body>
 </html>
-

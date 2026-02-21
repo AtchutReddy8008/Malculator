@@ -1,0 +1,558 @@
+{% extends 'base.html' %}
+
+{% block title %}Broker Connection - Trade with Naman{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg:       #070d1a;
+    --card-bg:  rgba(14, 22, 40, 0.88);
+    --border:   rgba(255,255,255,0.07);
+    --text:     #e8f0fe;
+    --muted:    #7a8aa0;
+
+    --zerodha:      #ff6b35;
+    --zerodha-glow: rgba(255,107,53,0.3);
+    --zerodha-dim:  rgba(255,107,53,0.08);
+
+    --binance:      #f0b90b;
+    --binance-glow: rgba(240,185,11,0.3);
+    --binance-dim:  rgba(240,185,11,0.08);
+
+    --delta:      #7c3aed;
+    --delta-glow: rgba(124,58,237,0.3);
+    --delta-dim:  rgba(124,58,237,0.08);
+
+    --success: #10b981;
+    --danger:  #ef4444;
+    --mono:    'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .broker-page {
+    font-family: var(--display);
+    min-height: 100vh;
+    padding: 2.5rem 1.5rem 5rem;
+    background-image:
+      radial-gradient(ellipse 55% 50% at 15% 20%, rgba(255,107,53,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 40% at 85% 75%, rgba(124,58,237,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 35% at 50% 5%,  rgba(240,185,11,0.04) 0%, transparent 50%);
+  }
+
+  /* ── HERO ── */
+  .page-hero {
+    text-align: center;
+    margin-bottom: 3.2rem;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 50px;
+    padding: 0.38rem 1.1rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #34d399;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.2rem;
+    animation: popIn 0.6s ease both;
+  }
+
+  .hero-badge .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #34d399;
+    animation: blink 1.6s infinite;
+  }
+
+  @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  @keyframes popIn    { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
+  @keyframes slideUp  { from{opacity:0;transform:translateY(26px)} to{opacity:1;transform:translateY(0)} }
+
+  .page-hero h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 0.8rem;
+    animation: slideUp 0.65s ease 0.05s both;
+  }
+
+  .page-hero h1 span {
+    background: linear-gradient(90deg, #38bdf8, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .page-hero p {
+    color: var(--muted);
+    font-size: 1rem;
+    animation: slideUp 0.65s ease 0.12s both;
+  }
+
+  /* ── GRID ── */
+  .broker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 1.8rem;
+    max-width: 1160px;
+    margin: 0 auto 2.5rem;
+  }
+
+  /* ── CARD ── */
+  .broker-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    opacity: 0;
+    transform: translateY(26px);
+    animation: slideUp 0.6s ease forwards;
+    transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.35s ease;
+    position: relative;
+  }
+
+  .broker-card:nth-child(1) { animation-delay: 0.07s; }
+  .broker-card:nth-child(2) { animation-delay: 0.18s; }
+  .broker-card:nth-child(3) { animation-delay: 0.29s; }
+
+  /* coloured top stripe */
+  .broker-card::before {
+    content: '';
+    display: block;
+    height: 3px;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .broker-card.zerodha-card::before { background: linear-gradient(90deg, var(--zerodha), #ff9a72, transparent); }
+  .broker-card.binance-card::before  { background: linear-gradient(90deg, var(--binance), #fde68a, transparent); }
+  .broker-card.delta-card::before    { background: linear-gradient(90deg, var(--delta),   #a78bfa, transparent); }
+
+  .broker-card.zerodha-card:hover { transform: translateY(-7px); box-shadow: 0 22px 65px var(--zerodha-glow); border-color: rgba(255,107,53,0.4); }
+  .broker-card.binance-card:hover  { transform: translateY(-7px); box-shadow: 0 22px 65px var(--binance-glow); border-color: rgba(240,185,11,0.4); }
+  .broker-card.delta-card:hover    { transform: translateY(-7px); box-shadow: 0 22px 65px var(--delta-glow);   border-color: rgba(124,58,237,0.4); }
+
+  /* ── CARD HEADER ── */
+  .broker-header {
+    padding: 1.3rem 1.5rem 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .broker-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  .broker-logo {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    font-weight: 800;
+    font-family: var(--mono);
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+  }
+
+  .broker-card:hover .broker-logo { transform: rotate(6deg) scale(1.08); }
+
+  .zerodha-card .broker-logo { background: var(--zerodha-dim); color: var(--zerodha); border: 1px solid rgba(255,107,53,0.3); }
+  .binance-card  .broker-logo { background: var(--binance-dim); color: var(--binance); border: 1px solid rgba(240,185,11,0.3); }
+  .delta-card    .broker-logo { background: var(--delta-dim);   color: var(--delta);   border: 1px solid rgba(124,58,237,0.3); }
+
+  .broker-info-col { display: flex; flex-direction: column; gap: 0.25rem; }
+
+  .broker-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .broker-sub {
+    font-size: 0.7rem;
+    font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
+
+  .status-pill {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    font-weight: 700;
+    padding: 0.28rem 0.8rem;
+    border-radius: 50px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .status-pill.connected    { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.35); animation: glow 2.2s infinite alternate; }
+  .status-pill.disconnected { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
+  .status-pill.coming-soon  { background: rgba(249,115,22,0.12); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
+
+  @keyframes glow {
+    from { box-shadow: 0 0 6px rgba(16,185,129,0.2); }
+    to   { box-shadow: 0 0 16px rgba(16,185,129,0.45); }
+  }
+
+  .enc-tag {
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .enc-tag i { color: #34d399; font-size: 0.65rem; }
+
+  /* ── CARD BODY ── */
+  .broker-body { padding: 1.4rem 1.5rem 1.6rem; }
+
+  .field-group { display: grid; gap: 0.85rem; margin-bottom: 1.2rem; }
+
+  .field-wrap label {
+    display: block;
+    font-size: 0.7rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 0.38rem;
+  }
+
+  .field-wrap { position: relative; }
+
+  .field-wrap input {
+    width: 100%;
+    padding: 0.72rem 2.4rem 0.72rem 1rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.86rem;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+
+  .field-wrap input::placeholder { color: rgba(120,140,170,0.45); }
+
+  .zerodha-card .field-wrap input:focus { border-color: var(--zerodha); box-shadow: 0 0 0 3px rgba(255,107,53,0.14); background: rgba(255,107,53,0.03); }
+  .binance-card  .field-wrap input:focus { border-color: var(--binance); box-shadow: 0 0 0 3px rgba(240,185,11,0.14); background: rgba(240,185,11,0.03); }
+  .delta-card    .field-wrap input:focus { border-color: var(--delta);   box-shadow: 0 0 0 3px rgba(124,58,237,0.14); background: rgba(124,58,237,0.03); }
+
+  .toggle-eye {
+    position: absolute;
+    right: 0.85rem;
+    bottom: 0.72rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.82rem;
+    padding: 0;
+    transition: color 0.2s;
+  }
+
+  .zerodha-card .toggle-eye:hover { color: var(--zerodha); }
+  .binance-card  .toggle-eye:hover { color: var(--binance); }
+  .delta-card    .toggle-eye:hover { color: var(--delta); }
+
+  /* ── ACTIONS ── */
+  .broker-actions { display: flex; gap: 0.8rem; }
+
+  .btn-reset {
+    flex: 1;
+    padding: 0.75rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--muted);
+    font-family: var(--display);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .btn-reset:hover { background: rgba(255,255,255,0.08); color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+  .btn-connect {
+    flex: 2;
+    padding: 0.75rem;
+    border-radius: 10px;
+    border: none;
+    color: #fff;
+    font-family: var(--display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.35s ease;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+
+  .zerodha-card .btn-connect { background: linear-gradient(135deg, #ff6b35, #e8521f); }
+  .binance-card  .btn-connect { background: linear-gradient(135deg, #f0b90b, #d4a008); }
+  .delta-card    .btn-connect { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+
+  .zerodha-card .btn-connect:hover { box-shadow: 0 8px 28px var(--zerodha-glow); transform: translateY(-2px); }
+  .binance-card  .btn-connect:hover { box-shadow: 0 8px 28px var(--binance-glow); transform: translateY(-2px); }
+  .delta-card    .btn-connect:hover { box-shadow: 0 8px 28px var(--delta-glow);   transform: translateY(-2px); }
+
+  /* ── COMING SOON BODY ── */
+  .coming-body {
+    padding: 2.2rem 1.5rem;
+    text-align: center;
+  }
+
+  .coming-icon { font-size: 2.2rem; margin-bottom: 0.8rem; }
+
+  .coming-body p {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    margin-bottom: 0.5rem;
+  }
+
+  .coming-body a {
+    color: #fbbf24;
+    text-decoration: underline;
+    font-size: 0.85rem;
+  }
+
+  /* ── SECURITY BANNER ── */
+  .security-banner {
+    max-width: 1160px;
+    margin: 0 auto;
+    background: linear-gradient(135deg, rgba(16,185,129,0.05), rgba(56,189,248,0.05));
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 18px;
+    padding: 1.8rem 2.2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.8rem;
+    animation: slideUp 0.65s ease 0.4s both;
+    opacity: 0;
+  }
+
+  .sec-icon-wrap {
+    width: 60px; height: 60px;
+    border-radius: 14px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.7rem;
+    flex-shrink: 0;
+  }
+
+  .sec-text h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+  }
+
+  .sec-text p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin: 0 0 0.7rem;
+  }
+
+  .sec-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  .sec-badge {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    padding: 0.22rem 0.65rem;
+    border-radius: 50px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.22);
+    color: #34d399;
+  }
+
+  @media (max-width: 700px) {
+    .broker-grid     { grid-template-columns: 1fr; }
+    .security-banner { flex-direction: column; text-align: center; }
+    .sec-badges      { justify-content: center; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="broker-page">
+
+  <!-- Hero -->
+  <div class="page-hero">
+    <div class="hero-badge"><span class="dot"></span> Secure &amp; Encrypted</div>
+    <h1>Broker <span>Credentials</span></h1>
+    <p>Connect your trading accounts securely. All credentials are encrypted and stored safely.</p>
+  </div>
+
+  <!-- Broker Grid -->
+  <div class="broker-grid">
+
+    <!-- ── ZERODHA (ACTIVE) ── -->
+    <div class="broker-card zerodha-card">
+      <div class="broker-header">
+        <div class="broker-identity">
+          <div class="broker-logo">Z</div>
+          <div class="broker-info-col">
+            <span class="broker-name">Zerodha</span>
+            <span class="broker-sub">kite.zerodha.com</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="status-pill {% if broker_ready %}connected{% else %}disconnected{% endif %}">
+            <i class="fas fa-circle me-1" style="font-size:0.45rem"></i>
+            {% if broker_ready %}Connected{% else %}Not Connected{% endif %}
+          </span>
+          <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+        </div>
+      </div>
+
+      <div class="broker-body">
+        <form method="post" action="{% url 'broker' %}">
+          {% csrf_token %}
+          <div class="field-group">
+            <div class="field-wrap">
+              <label>API Key</label>
+              <input type="text" name="api_key" value="{{ broker.api_key|default:'' }}" placeholder="xxxxxxxxxxxxxxxx" autocomplete="off">
+            </div>
+            <div class="field-wrap">
+              <label>API Secret</label>
+              <input type="password" name="api_secret" placeholder="••••••••••••••••" autocomplete="off" id="z-secret">
+              <button type="button" class="toggle-eye" onclick="toggleField('z-secret',this)"><i class="fas fa-eye"></i></button>
+            </div>
+            <div class="field-wrap">
+              <label>User ID</label>
+              <input type="text" name="user_id" value="{{ broker.user_id|default:'' }}" placeholder="AB1234" autocomplete="off">
+            </div>
+            <div class="field-wrap">
+              <label>Password</label>
+              <input type="password" name="password" placeholder="••••••••" autocomplete="off" id="z-password">
+              <button type="button" class="toggle-eye" onclick="toggleField('z-password',this)"><i class="fas fa-eye"></i></button>
+            </div>
+            <div class="field-wrap">
+              <label>TOTP Secret <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+              <input type="text" name="totp_secret" value="{{ broker.totp_secret|default:'' }}" placeholder="Base32 TOTP key" autocomplete="off">
+            </div>
+          </div>
+          <div class="broker-actions">
+            <button type="reset" class="btn-reset"><i class="fas fa-redo me-1"></i> Reset</button>
+            <button type="submit" class="btn-connect">
+              <i class="fas fa-plug me-2"></i>
+              {% if broker_ready %}Update Zerodha{% else %}Connect Zerodha{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── BINANCE (COMING SOON) ── -->
+    <div class="broker-card binance-card">
+      <div class="broker-header">
+        <div class="broker-identity">
+          <div class="broker-logo">B</div>
+          <div class="broker-info-col">
+            <span class="broker-name">Binance</span>
+            <span class="broker-sub">binance.com/api</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="status-pill coming-soon">⏳ Coming Soon</span>
+          <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+        </div>
+      </div>
+
+      <div class="coming-body">
+        <div class="coming-icon">🟡</div>
+        <p>Binance integration is under active development.<br>Expected in Q3 2026.</p>
+        {% if user.is_authenticated %}
+          <p style="font-size:0.8rem">We'll notify you when it's ready.</p>
+        {% else %}
+          <a href="{% url 'auth' %}?mode=login">Login</a> to get early access updates.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── DELTA EXCHANGE (COMING SOON) ── -->
+    <div class="broker-card delta-card">
+      <div class="broker-header">
+        <div class="broker-identity">
+          <div class="broker-logo">Δ</div>
+          <div class="broker-info-col">
+            <span class="broker-name">Delta Exchange</span>
+            <span class="broker-sub">delta.exchange/api</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="status-pill coming-soon">⏳ Coming Soon</span>
+          <span class="enc-tag"><i class="fas fa-lock"></i> 256-bit encryption</span>
+        </div>
+      </div>
+
+      <div class="coming-body">
+        <div class="coming-icon">🟣</div>
+        <p>Delta Exchange support is planned for 2026.<br>Stay tuned for updates.</p>
+        {% if not user.is_authenticated %}
+          <a href="{% url 'auth' %}?mode=login">Login</a> to save your spot.
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- /broker-grid -->
+
+  <!-- Security Banner -->
+  <div class="security-banner">
+    <div class="sec-icon-wrap">🔐</div>
+    <div class="sec-text">
+      <h4>Your Security is Our Priority</h4>
+      <p>All credentials are encrypted using industry-standard AES-256 encryption. We never store your passwords in plain text and use secure API connections for all trading operations.</p>
+      <div class="sec-badges">
+        <span class="sec-badge">AES-256 Encrypted</span>
+        <span class="sec-badge">No Plain-text Storage</span>
+        <span class="sec-badge">Secure API Only</span>
+        <span class="sec-badge">Read + Trade Scope Only</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleField(id, btn) {
+  const inp  = document.getElementById(id);
+  const icon = btn.querySelector('i');
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  icon.classList.toggle('fa-eye');
+  icon.classList.toggle('fa-eye-slash');
+}
+</script>
+{% endblock %}

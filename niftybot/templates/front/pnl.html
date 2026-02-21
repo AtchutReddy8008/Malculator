@@ -1,0 +1,664 @@
+{% extends 'base.html' %}
+
+{% load math_filters calendar_tags humanize %}
+
+{% block title %}PnL Calendar - NIFTY Trading Bot{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&display=swap');
+
+  :root {
+    --bg: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.78);
+    --card-border: rgba(148, 163, 184, 0.20);
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --primary: #3b82f6;
+    --profit: #10b981;
+    --profit-text: #34d399;
+    --loss: #ef4444;
+    --loss-text: #f87171;
+    --current: #60a5fa;
+    --date-color: #f1f5f9;
+    --zero: #64748b;
+    --sidebar-bg: rgba(23, 32, 46, 0.85);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-family: 'DM Sans', sans-serif;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(59,130,246,0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.05) 0%, transparent 50%);
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .page-title i { color: var(--primary); }
+
+  /* ─── SUMMARY STRIP ─── */
+  .summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.8rem;
+  }
+
+  .summary-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 1rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    backdrop-filter: blur(10px);
+  }
+
+  .summary-card .label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .summary-card .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .summary-card .value.profit { color: var(--profit-text); }
+  .summary-card .value.loss   { color: var(--loss-text); }
+  .summary-card .value.blue   { color: var(--primary); }
+  .summary-card .value.white  { color: var(--text); }
+
+  .summary-card .sub {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  /* ─── LAYOUT ─── */
+  .pnl-page-wrapper {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+  }
+
+  .calendar-section { flex: 3 1 720px; min-width: 0; }
+  .sidebar-section  { flex: 1 1 340px; max-width: 380px; min-width: 320px; }
+
+  /* ─── CALENDAR CARD ─── */
+  .calendar-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 1.6rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.6rem;
+    padding-bottom: 1.2rem;
+    border-bottom: 1px solid rgba(148,163,184,0.25);
+  }
+
+  .calendar-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .calendar-nav a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    font-size: 0.95rem;
+  }
+
+  .calendar-nav a:hover { color: #93c5fd; }
+
+  .calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-weight: 700;
+    color: #cbd5e1;
+    margin-bottom: 1rem;
+    padding: 0.8rem 0;
+    background: rgba(15,23,42,0.65);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+  }
+
+  .calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.6rem;
+  }
+
+  .calendar-day {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(51,65,85,0.48);
+    border-radius: 12px;
+    padding: 0.4rem;
+    position: relative;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+
+  .calendar-day:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    z-index: 10;
+  }
+
+  .calendar-day.empty {
+    background: transparent;
+    border: none;
+    pointer-events: none;
+  }
+
+  .calendar-day.current-day {
+    border: 2.5px solid var(--current);
+    background: rgba(96,165,250,0.18);
+    box-shadow: 0 0 20px rgba(96,165,250,0.35);
+  }
+
+  .calendar-day.profit {
+    background: linear-gradient(135deg, rgba(16,185,129,0.22), rgba(16,185,129,0.06));
+    border: 1.5px solid rgba(16,185,129,0.7);
+  }
+
+  .calendar-day.loss {
+    background: linear-gradient(135deg, rgba(239,68,68,0.22), rgba(239,68,68,0.06));
+    border: 1.5px solid rgba(239,68,68,0.7);
+  }
+
+  .calendar-day.zero {
+    background: rgba(100,116,139,0.18);
+    border: 1.5px solid var(--zero);
+  }
+
+  .calendar-day.weekend {
+    opacity: 0.45;
+  }
+
+  .calendar-day .date {
+    font-weight: 800;
+    font-size: 1.2rem;
+    color: var(--date-color);
+    margin-bottom: 0.3rem;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .calendar-day .pnl {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .calendar-day.profit .pnl {
+    color: var(--profit-text);
+    background: rgba(16,185,129,0.28);
+    border: 1px solid rgba(16,185,129,0.6);
+  }
+
+  .calendar-day.loss .pnl {
+    color: var(--loss-text);
+    background: rgba(239,68,68,0.28);
+    border: 1px solid rgba(239,68,68,0.6);
+  }
+
+  .calendar-day.zero .pnl {
+    color: var(--zero);
+    background: rgba(100,116,139,0.22);
+    border: 1px solid var(--zero);
+  }
+
+  /* Tooltip */
+  .tooltip-box {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,18,35,0.97);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    z-index: 200;
+    display: none;
+    min-width: 180px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+
+  .calendar-day:hover .tooltip-box { display: block; }
+
+  .tooltip-box .t-date { font-weight: 700; color: var(--text); margin-bottom: 0.3rem; }
+  .tooltip-box .t-pnl  { font-family: 'Space Mono', monospace; font-size: 1rem; font-weight: 700; }
+  .tooltip-box .t-meta { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+
+  .legend-dot {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    border: 2px solid;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar-card {
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    position: sticky;
+    top: 1.5rem;
+  }
+
+  .sidebar-card .card-header {
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--card-border);
+    font-weight: 700;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+    background: rgba(15,23,42,0.5);
+  }
+
+  .card-header i { color: var(--primary); }
+
+  .card-body {
+    max-height: 72vh;
+    overflow-y: auto;
+    padding: 0.9rem;
+  }
+
+  .card-body::-webkit-scrollbar { width: 5px; }
+  .card-body::-webkit-scrollbar-track { background: transparent; }
+  .card-body::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.25); border-radius: 4px; }
+
+  .daily-pnl-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.6rem;
+    border-radius: 8px;
+    transition: transform 0.2s;
+  }
+
+  .daily-pnl-item:hover { transform: translateX(3px); }
+
+  .daily-pnl-item.profit-bg {
+    border-left: 4px solid var(--profit);
+    background: rgba(16,185,129,0.09);
+  }
+
+  .daily-pnl-item.loss-bg {
+    border-left: 4px solid var(--loss);
+    background: rgba(239,68,68,0.09);
+  }
+
+  .daily-pnl-item.zero-bg {
+    border-left: 4px solid var(--zero);
+    background: rgba(100,116,139,0.09);
+  }
+
+  .item-left strong { font-size: 0.95rem; display: block; }
+  .item-left small  { font-size: 0.78rem; color: var(--text-muted); }
+
+  .item-right { text-align: right; }
+  .item-right .amt {
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    display: block;
+  }
+
+  .item-right .amt.profit { color: var(--profit-text); }
+  .item-right .amt.loss   { color: var(--loss-text); }
+  .item-right .amt.zero   { color: var(--zero); }
+  .item-right small       { font-size: 0.76rem; color: var(--text-muted); }
+
+  @media (max-width: 991px) {
+    .pnl-page-wrapper { flex-direction: column; }
+    .sidebar-section  { max-width: 100%; min-width: 0; width: 100%; }
+    .sidebar-card     { position: static; }
+    .summary-strip    { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 600px) {
+    .summary-strip { grid-template-columns: 1fr 1fr; }
+    .calendar-day .date { font-size: 1rem; }
+    .calendar-day .pnl  { font-size: 0.68rem; padding: 0.2rem 0.35rem; }
+    .calendar-days      { gap: 0.4rem; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="container">
+
+  <!-- Page Title -->
+  <div class="page-title">
+    <i class="fas fa-calendar-alt"></i> PnL Calendar
+  </div>
+
+  <!-- Summary Strip -->
+  <div class="summary-strip">
+    <div class="summary-card">
+      <span class="label">Net Monthly P&L</span>
+      <span class="value profit">₹2,34,580</span>
+      <span class="sub">Feb 2025 · 18 trading days</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Win Rate</span>
+      <span class="value blue">76.5%</span>
+      <span class="sub">13W · 4L · 1 flat</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Best Day</span>
+      <span class="value profit">₹38,420</span>
+      <span class="sub">Feb 14 · Strangle exit</span>
+    </div>
+    <div class="summary-card">
+      <span class="label">Worst Day</span>
+      <span class="value loss">−₹18,650</span>
+      <span class="sub">Feb 7 · Gap-up stop hit</span>
+    </div>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="pnl-page-wrapper">
+
+    <!-- Calendar -->
+    <div class="calendar-section">
+      <div class="calendar-card">
+        <div class="calendar-header">
+          <div class="calendar-nav">
+            <a href="#"><i class="fas fa-chevron-left"></i> 01/2025</a>
+          </div>
+          <div class="calendar-title">February 2025</div>
+          <div class="calendar-nav">
+            <a href="#">03/2025 <i class="fas fa-chevron-right"></i></a>
+          </div>
+        </div>
+
+        <div class="calendar-weekdays">
+          <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div>
+          <div>Fri</div><div>Sat</div><div>Sun</div>
+        </div>
+
+        <div class="calendar-days" id="calendarDays">
+          <!-- Filled by JS -->
+        </div>
+
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(16,185,129,0.22);border-color:var(--profit)"></div>
+            Profit Day
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(239,68,68,0.22);border-color:var(--loss)"></div>
+            Loss Day
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(100,116,139,0.18);border-color:var(--zero)"></div>
+            No Trade / ₹0
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:rgba(96,165,250,0.18);border-color:var(--current)"></div>
+            Current Day
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar-section">
+      <div class="sidebar-card">
+        <div class="card-header">
+          <i class="fas fa-list-alt"></i> Daily P&L Details
+        </div>
+        <div class="card-body" id="sidebarList">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─── DUMMY DATA (Feb 2025, Mon=1 Feb) ───────────────────────────────────────
+// Feb 2025 starts on Saturday → offset = 5 (Mon=0)
+const MONTH_YEAR  = "February 2025";
+const DAYS_COUNT  = 28;
+const START_OFFSET = 5; // Saturday
+
+// PnL per date (1-indexed). Weekends = null (no trade)
+const pnlData = {
+  1:  null,          // Sat
+  2:  null,          // Sun
+  3:  18420,         // Mon ✅
+  4:  12350,         // Tue ✅
+  5:  -6820,         // Wed ❌
+  6:  21760,         // Thu ✅
+  7:  -18650,        // Fri ❌
+  8:  null,          // Sat
+  9:  null,          // Sun
+  10: 9540,          // Mon ✅
+  11: 15230,         // Tue ✅
+  12: 27890,         // Wed ✅
+  13: -11240,        // Thu ❌
+  14: 38420,         // Fri ✅ (best day)
+  15: null,          // Sat
+  16: null,          // Sun
+  17: 16700,         // Mon ✅
+  18: 0,             // Tue flat
+  19: 22310,         // Wed ✅
+  20: 8960,          // Thu ✅
+  21: 19420,         // Fri ✅ (current day)
+  22: null,          // Sat
+  23: null,          // Sun
+  24: 13580,         // Mon ✅
+  25: -7450,         // Tue ❌
+  26: 24670,         // Wed ✅
+  27: 11280,         // Thu ✅
+  28: 17520,         // Fri ✅
+};
+
+const tradeData = {
+  3:  { trades: 4, wins: 3, losses: 1, strategy: "Iron Condor" },
+  4:  { trades: 3, wins: 2, losses: 1, strategy: "Strangle" },
+  5:  { trades: 5, wins: 2, losses: 3, strategy: "NIFTY CE" },
+  6:  { trades: 6, wins: 5, losses: 1, strategy: "Strangle + Futures" },
+  7:  { trades: 4, wins: 1, losses: 3, strategy: "BankNifty PE" },
+  10: { trades: 3, wins: 3, losses: 0, strategy: "Iron Condor" },
+  11: { trades: 5, wins: 4, losses: 1, strategy: "Strangle" },
+  12: { trades: 7, wins: 6, losses: 1, strategy: "Strangle Exit" },
+  13: { trades: 4, wins: 1, losses: 3, strategy: "NIFTY Futures" },
+  14: { trades: 6, wins: 6, losses: 0, strategy: "Expiry Strangle" },
+  17: { trades: 4, wins: 3, losses: 1, strategy: "Iron Condor" },
+  18: { trades: 2, wins: 1, losses: 1, strategy: "Scalp" },
+  19: { trades: 5, wins: 4, losses: 1, strategy: "Strangle" },
+  20: { trades: 3, wins: 3, losses: 0, strategy: "BN Futures" },
+  21: { trades: 5, wins: 4, losses: 1, strategy: "NIFTY CE Sell" },
+  24: { trades: 4, wins: 3, losses: 1, strategy: "Iron Condor" },
+  25: { trades: 3, wins: 1, losses: 2, strategy: "NIFTY PE" },
+  26: { trades: 6, wins: 5, losses: 1, strategy: "Strangle" },
+  27: { trades: 4, wins: 3, losses: 1, strategy: "Scalp + Swing" },
+  28: { trades: 5, wins: 4, losses: 1, strategy: "Expiry Play" },
+};
+
+const TODAY = 21; // simulate current day
+
+function formatPnl(val) {
+  if (val === null) return null;
+  const abs = Math.abs(val).toLocaleString('en-IN');
+  return val >= 0 ? `₹${abs}` : `−₹${abs}`;
+}
+
+function dayClass(val) {
+  if (val === null) return 'weekend';
+  if (val > 0)  return 'profit';
+  if (val < 0)  return 'loss';
+  return 'zero';
+}
+
+function buildCalendar() {
+  const grid = document.getElementById('calendarDays');
+  let html = '';
+
+  // Empty leading cells
+  for (let i = 0; i < START_OFFSET; i++) {
+    html += `<div class="calendar-day empty"></div>`;
+  }
+
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  for (let d = 1; d <= DAYS_COUNT; d++) {
+    const pnl   = pnlData[d];
+    const cls   = dayClass(pnl);
+    const isToday = d === TODAY;
+    const meta  = tradeData[d];
+
+    const pnlStr = pnl !== null ? formatPnl(pnl) : '—';
+
+    // Day of week (offset + d - 1) mod 7
+    const dowIdx = (START_OFFSET + d - 1) % 7;
+    const dowName = dayNames[dowIdx];
+
+    let tooltip = '';
+    if (pnl !== null) {
+      const winLoss = meta ? `${meta.wins}W / ${meta.losses}L` : '';
+      const strat   = meta ? meta.strategy : '';
+      const trades  = meta ? `${meta.trades} trades` : '';
+      tooltip = `
+        <div class="tooltip-box">
+          <div class="t-date">${dowName}, Feb ${d}, 2025</div>
+          <div class="t-pnl ${cls === 'profit' ? 'profit' : cls === 'loss' ? 'loss' : ''}" style="color:${cls==='profit'?'var(--profit-text)':cls==='loss'?'var(--loss-text)':'var(--zero)'}">
+            ${pnlStr}
+          </div>
+          <div class="t-meta">${trades} · ${winLoss}</div>
+          <div class="t-meta">${strat}</div>
+        </div>`;
+    }
+
+    const todayClass = isToday ? ' current-day' : '';
+    const pnlBadge = pnl !== null
+      ? `<div class="pnl">${pnlStr}</div>`
+      : `<div class="pnl" style="opacity:0.25">—</div>`;
+
+    html += `
+      <div class="calendar-day ${cls}${todayClass}">
+        <div class="date">${d}</div>
+        ${pnlBadge}
+        ${tooltip}
+      </div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function buildSidebar() {
+  const list = document.getElementById('sidebarList');
+  let html = '';
+
+  // Sorted desc: most recent first, skip weekends
+  const tradingDays = Object.keys(pnlData)
+    .map(Number)
+    .filter(d => pnlData[d] !== null)
+    .sort((a, b) => b - a);
+
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  for (const d of tradingDays) {
+    const pnl  = pnlData[d];
+    const meta = tradeData[d] || {};
+    const cls  = pnl > 0 ? 'profit' : pnl < 0 ? 'loss' : 'zero';
+    const bgCls = `${cls}-bg`;
+    const dowIdx = (START_OFFSET + d - 1) % 7;
+    const dowName = dayNames[dowIdx];
+    const pnlStr = formatPnl(pnl);
+    const todayBadge = d === TODAY ? ' <span style="font-size:0.7rem;color:var(--current);font-weight:700;">LIVE</span>' : '';
+
+    html += `
+      <div class="daily-pnl-item ${bgCls}">
+        <div class="item-left">
+          <strong>${dowName}, Feb ${String(d).padStart(2,'0')}${todayBadge}</strong>
+          <small>${meta.trades || 0} trades · ${meta.strategy || '—'}</small>
+        </div>
+        <div class="item-right">
+          <span class="amt ${cls}">${pnlStr}</span>
+          <small>${meta.wins || 0}W / ${meta.losses || 0}L</small>
+        </div>
+      </div>`;
+  }
+
+  list.innerHTML = html;
+}
+
+buildCalendar();
+buildSidebar();
+</script>
+{% endblock %}

@@ -1,0 +1,680 @@
+{% extends 'base.html' %}
+
+{% block title %}Trading Strategies - Trade with Naman{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg:      #070c17;
+    --text:    #eef2ff;
+    --muted:   #7a8899;
+    --border:  rgba(255,255,255,0.07);
+    --mono:    'JetBrains Mono', monospace;
+    --display: 'Outfit', sans-serif;
+    --c1: #06b6d4;
+    --c2: #10b981;
+    --c3: #f43f5e;
+    --c4: #f59e0b;
+    --c5: #a855f7;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .strat-page {
+    font-family: var(--display);
+    padding: 2.5rem 1.5rem 5rem;
+    min-height: 100vh;
+  }
+
+  /* ── HERO ── */
+  .strat-hero {
+    text-align: center;
+    max-width: 680px;
+    margin: 0 auto 3.5rem;
+  }
+
+  .strat-hero .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #818cf8;
+    background: rgba(129,140,248,0.1);
+    border: 1px solid rgba(129,140,248,0.25);
+    border-radius: 50px;
+    padding: 0.35rem 1rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .strat-hero h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    margin-bottom: 1rem;
+  }
+
+  .strat-hero p { color: var(--muted); font-size: 1.05rem; line-height: 1.65; }
+
+  /* ── GRID ── */
+  .strat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.8rem;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* ── CARD ── */
+  .strat-card {
+    background: rgba(12, 18, 32, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(30px);
+    animation: fadeUp 0.6s ease forwards;
+    transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+  }
+
+  .strat-card:nth-child(1) { animation-delay: 0.05s; --accent: var(--c1); }
+  .strat-card:nth-child(2) { animation-delay: 0.15s; --accent: var(--c2); }
+  .strat-card:nth-child(3) { animation-delay: 0.25s; --accent: var(--c3); }
+  .strat-card:nth-child(4) { animation-delay: 0.35s; --accent: var(--c4); }
+  .strat-card:nth-child(5) { animation-delay: 0.45s; --accent: var(--c5); }
+
+  @keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
+
+  .strat-card:hover {
+    transform: translateY(-8px);
+    border-color: var(--accent);
+    box-shadow: 0 24px 70px rgba(0,0,0,0.55), 0 0 0 1px var(--accent);
+  }
+
+  .strat-card::before {
+    content: '';
+    display: block;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    border-radius: 22px 22px 0 0;
+  }
+
+  /* ── CARD TOP ── */
+  .card-top {
+    padding: 1.5rem 1.6rem 1rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .card-meta { flex: 1; }
+
+  .strat-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  .tag-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  .tag {
+    font-size: 0.7rem;
+    font-family: var(--mono);
+    font-weight: 600;
+    padding: 0.25rem 0.7rem;
+    border-radius: 50px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .tag-market    { background: rgba(255,255,255,0.06); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); }
+  .tag-risk-low  { background: rgba(16,185,129,0.1);  color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+  .tag-risk-med  { background: rgba(245,158,11,0.1);  color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+  .tag-risk-high { background: rgba(239,68,68,0.1);   color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+  .strat-icon {
+    width: 52px; height: 52px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    transition: transform 0.3s ease;
+  }
+  .strat-card:hover .strat-icon { transform: rotate(8deg) scale(1.1); }
+
+  /* ── DESC ── */
+  .strat-desc {
+    padding: 0 1.6rem 1rem;
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  /* ── PAYOFF ── */
+  .payoff-wrap {
+    margin: 0 1.6rem;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 0.8rem 1rem 0.5rem;
+  }
+
+  .payoff-label {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+  }
+
+  .payoff-svg { width: 100%; height: 70px; overflow: visible; }
+
+  .axis-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    margin-top: 0.3rem;
+    padding: 0 0.2rem;
+  }
+  .axis-loss { color: #f87171; }
+  .axis-profit { color: #34d399; }
+
+  /* ── LOGIC ── */
+  .logic-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+    padding: 1rem 1.6rem;
+  }
+
+  .logic-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 0.8rem;
+  }
+
+  .logic-title {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 0.45rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .logic-box.entry .logic-title { color: #34d399; }
+  .logic-box.exit  .logic-title { color: #f87171; }
+  .logic-box p { font-size: 0.78rem; color: #8a9ab5; line-height: 1.55; margin: 0; }
+
+  /* ── COMING SOON BODY ── */
+  .coming-body {
+    padding: 1.5rem 1.6rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .coming-inner {
+    background: rgba(245,158,11,0.04);
+    border: 1px dashed rgba(245,158,11,0.25);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .coming-icon { font-size: 2rem; margin-bottom: 0.6rem; }
+  .coming-inner p { color: var(--muted); font-size: 0.85rem; line-height: 1.6; margin: 0 0 0.5rem; }
+  .coming-inner .login-prompt {
+    color: #fbbf24;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 0.83rem;
+  }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: flex;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+  }
+
+  .stat-item {
+    flex: 1;
+    text-align: center;
+    padding: 1rem 0.5rem;
+    border-right: 1px solid var(--border);
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-val { font-family: var(--mono); font-size: 1.05rem; font-weight: 700; color: var(--text); display: block; }
+  .stat-lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-top: 0.2rem; display: block; }
+
+  /* ── STATUS BADGE ── */
+  .status-badge {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.28rem 0.75rem;
+    border-radius: 50px;
+  }
+
+  .status-live {
+    background: rgba(16,185,129,0.15);
+    color: #34d399;
+    border: 1px solid rgba(16,185,129,0.4);
+    animation: livePulse 2.2s infinite;
+  }
+
+  .status-soon {
+    background: rgba(245,158,11,0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245,158,11,0.3);
+  }
+
+  @keyframes livePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    50%      { box-shadow: 0 0 12px 2px rgba(16,185,129,0.3); }
+  }
+
+  /* ── CTA BUTTON ── */
+  .card-cta { padding: 0 1.6rem 1.6rem; }
+
+  .btn-strat {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 0.8rem;
+    border-radius: 12px;
+    font-family: var(--display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  .btn-strat:hover  { transform: translateY(-2px); color: #fff; }
+  .btn-strat.dimmed { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+  /* ── FOOTER CTA ── */
+  .strat-footer {
+    text-align: center;
+    margin: 4rem auto 0;
+    max-width: 560px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(16,185,129,0.06));
+    border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.6s forwards;
+  }
+
+  .strat-footer h3 { font-size: 1.5rem; font-weight: 800; color: var(--text); margin-bottom: 0.6rem; }
+  .strat-footer p  { color: var(--muted); font-size: 0.93rem; margin-bottom: 1.5rem; }
+
+  .btn-footer {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.9rem 2.2rem;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    transition: all 0.3s;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .btn-footer:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(99,102,241,0.45); color: #fff; }
+
+  @media (max-width: 700px) {
+    .strat-grid  { grid-template-columns: 1fr; }
+    .logic-grid  { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="strat-page">
+
+  <!-- Hero -->
+  <div class="strat-hero">
+    <div class="eyebrow">⚡ Institutional-Grade Algorithms</div>
+    <h1>Our Trading Algorithms</h1>
+    <p>Professionally designed strategies for consistent returns across different market conditions</p>
+  </div>
+
+  <div class="strat-grid">
+
+    <!-- ── 1. SHORT STRANGLE (LIVE) ── -->
+    <div class="strat-card" style="--accent:var(--c1)">
+      <span class="status-badge status-live">● Live Now</span>
+
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="strat-name">Short Strangle</div>
+          <div class="tag-row">
+            <span class="tag tag-market">Nifty / BankNifty</span>
+            <span class="tag tag-risk-med">Medium Risk</span>
+          </div>
+        </div>
+        <div class="strat-icon" style="color:var(--c1)">⚖️</div>
+      </div>
+
+      <div class="strat-desc">Sell OTM Call &amp; Put options to collect premium. Profits from time decay in range-bound markets.</div>
+
+      <div class="payoff-wrap">
+        <div class="payoff-label">Payoff Diagram</div>
+        <svg class="payoff-svg" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="30%"  stop-color="#06b6d4" stop-opacity="0.9"/>
+            <stop offset="70%"  stop-color="#06b6d4" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#f87171" stop-opacity="0.7"/>
+          </linearGradient></defs>
+          <line x1="0" y1="50" x2="300" y2="50" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+          <polyline points="0,65 70,65 90,25 210,25 230,65 300,65" fill="none" stroke="url(#g1)" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="90"  cy="25" r="3" fill="#06b6d4"/>
+          <circle cx="210" cy="25" r="3" fill="#06b6d4"/>
+        </svg>
+        <div class="axis-labels"><span class="axis-loss">Loss</span><span class="axis-profit">Profit</span></div>
+      </div>
+
+      <div class="logic-grid">
+        <div class="logic-box entry">
+          <div class="logic-title">↗ Entry Logic</div>
+          <p>Enter when IV is elevated, market in consolidation. Sell equidistant OTM strikes.</p>
+        </div>
+        <div class="logic-box exit">
+          <div class="logic-title">↘ Exit Logic</div>
+          <p>Exit at 50% profit or if underlying breaches breakeven. SL at 2x premium collected.</p>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-val" style="color:var(--c1)">8–12%</span><span class="stat-lbl">Monthly Return</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#34d399">72%</span><span class="stat-lbl">Win Rate</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#f87171">15%</span><span class="stat-lbl">Max Drawdown</span></div>
+      </div>
+
+      <div class="card-cta">
+        <a href="{% url 'short_strangle_detail' %}" class="btn-strat" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+          <i class="fas fa-rocket me-2"></i> Launch Strategy
+        </a>
+      </div>
+    </div>
+
+    <!-- ── 2. NIFTY CALL (COMING SOON) ── -->
+    <div class="strat-card" style="--accent:var(--c2)">
+      <span class="status-badge status-soon">⏳ Coming 2026</span>
+
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="strat-name">Nifty Call Strategy</div>
+          <div class="tag-row">
+            <span class="tag tag-market">Nifty 50</span>
+            <span class="tag tag-risk-low">Low Risk</span>
+          </div>
+        </div>
+        <div class="strat-icon" style="color:var(--c2)">📈</div>
+      </div>
+
+      <div class="strat-desc">Bullish directional strategy using ATM/ITM calls with defined risk. Perfect for trending markets.</div>
+
+      <div class="payoff-wrap">
+        <div class="payoff-label">Payoff Diagram</div>
+        <svg class="payoff-svg" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="45%"  stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.9"/>
+          </linearGradient></defs>
+          <line x1="0" y1="50" x2="300" y2="50" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+          <polyline points="0,62 120,62 150,50 300,8" fill="none" stroke="url(#g2)" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="150" cy="50" r="3" fill="#10b981"/>
+        </svg>
+        <div class="axis-labels"><span class="axis-loss">Loss</span><span class="axis-profit">Profit</span></div>
+      </div>
+
+      <div class="logic-grid">
+        <div class="logic-box entry">
+          <div class="logic-title">↗ Entry Logic</div>
+          <p>Buy calls when Nifty crosses 20 EMA with volume confirmation. Target: 1:2 RR.</p>
+        </div>
+        <div class="logic-box exit">
+          <div class="logic-title">↘ Exit Logic</div>
+          <p>Trail stop at 20 EMA. Book partial profits at resistance levels.</p>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-val" style="color:var(--c2)">10–15%</span><span class="stat-lbl">Monthly Return</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#34d399">65%</span><span class="stat-lbl">Win Rate</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#f87171">10%</span><span class="stat-lbl">Max Drawdown</span></div>
+      </div>
+
+      <div class="card-cta">
+        <button class="btn-strat dimmed" style="background:linear-gradient(135deg,#10b981,#059669)">
+          <i class="fas fa-clock me-2"></i> Coming Q3 2026
+        </button>
+        {% if not user.is_authenticated %}
+          <p style="text-align:center;margin-top:0.6rem;font-size:0.78rem;color:var(--muted)">
+            <a href="{% url 'auth' %}?mode=login" style="color:#fbbf24;text-decoration:underline">Login</a> for early access updates
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── 3. NIFTY PUT (COMING SOON) ── -->
+    <div class="strat-card" style="--accent:var(--c3)">
+      <span class="status-badge status-soon">⏳ Coming 2026</span>
+
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="strat-name">Nifty Put Strategy</div>
+          <div class="tag-row">
+            <span class="tag tag-market">Nifty 50</span>
+            <span class="tag tag-risk-low">Low Risk</span>
+          </div>
+        </div>
+        <div class="strat-icon" style="color:var(--c3)">📉</div>
+      </div>
+
+      <div class="strat-desc">Bearish directional strategy for downtrending markets. Defined risk with asymmetric reward.</div>
+
+      <div class="payoff-wrap">
+        <div class="payoff-label">Payoff Diagram</div>
+        <svg class="payoff-svg" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#f43f5e" stop-opacity="0.9"/>
+            <stop offset="55%"  stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#f87171" stop-opacity="0.7"/>
+          </linearGradient></defs>
+          <line x1="0" y1="50" x2="300" y2="50" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+          <polyline points="0,8 150,50 180,62 300,62" fill="none" stroke="url(#g3)" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="150" cy="50" r="3" fill="#f43f5e"/>
+        </svg>
+        <div class="axis-labels"><span class="axis-loss">Loss</span><span class="axis-profit">Profit</span></div>
+      </div>
+
+      <div class="logic-grid">
+        <div class="logic-box entry">
+          <div class="logic-title">↗ Entry Logic</div>
+          <p>Buy puts when Nifty breaks below 20 EMA with increasing volume. Use put spreads.</p>
+        </div>
+        <div class="logic-box exit">
+          <div class="logic-title">↘ Exit Logic</div>
+          <p>Target previous swing lows. Exit on bullish reversal patterns.</p>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-val" style="color:var(--c3)">10–18%</span><span class="stat-lbl">Monthly Return</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#34d399">60%</span><span class="stat-lbl">Win Rate</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#f87171">12%</span><span class="stat-lbl">Max Drawdown</span></div>
+      </div>
+
+      <div class="card-cta">
+        <button class="btn-strat dimmed" style="background:linear-gradient(135deg,#f43f5e,#e11d48)">
+          <i class="fas fa-clock me-2"></i> Planned after Call Strategy
+        </button>
+      </div>
+    </div>
+
+    <!-- ── 4. POSITIONAL (COMING SOON) ── -->
+    <div class="strat-card" style="--accent:var(--c4)">
+      <span class="status-badge status-soon">⏳ Coming 2026</span>
+
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="strat-name">Positional Algo</div>
+          <div class="tag-row">
+            <span class="tag tag-market">Nifty / BankNifty</span>
+            <span class="tag tag-risk-med">Medium Risk</span>
+          </div>
+        </div>
+        <div class="strat-icon" style="color:var(--c4)">🎯</div>
+      </div>
+
+      <div class="strat-desc">Swing trading strategy holding positions for 3–10 days. Captures larger market moves with options leverage.</div>
+
+      <div class="payoff-wrap">
+        <div class="payoff-label">Payoff Diagram</div>
+        <svg class="payoff-svg" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g4" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="35%"  stop-color="#f59e0b" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.9"/>
+          </linearGradient></defs>
+          <line x1="0" y1="50" x2="300" y2="50" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+          <polyline points="0,60 80,60 110,50 160,40 200,30 300,10" fill="none" stroke="url(#g4)" stroke-width="2.5" stroke-linejoin="round"/>
+          <circle cx="110" cy="50" r="3" fill="#f59e0b"/>
+        </svg>
+        <div class="axis-labels"><span class="axis-loss">Loss</span><span class="axis-profit">Profit</span></div>
+      </div>
+
+      <div class="logic-grid">
+        <div class="logic-box entry">
+          <div class="logic-title">↗ Entry Logic</div>
+          <p>Enter on weekly support/resistance breakouts. Use options for leveraged exposure.</p>
+        </div>
+        <div class="logic-box exit">
+          <div class="logic-title">↘ Exit Logic</div>
+          <p>Time-based exit after 7 days or target. Strict 3% portfolio risk per trade.</p>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-val" style="color:var(--c4)">12–20%</span><span class="stat-lbl">Monthly Return</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#34d399">58%</span><span class="stat-lbl">Win Rate</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#f87171">18%</span><span class="stat-lbl">Max Drawdown</span></div>
+      </div>
+
+      <div class="card-cta">
+        <button class="btn-strat dimmed" style="background:linear-gradient(135deg,#f59e0b,#d97706)">
+          <i class="fas fa-clock me-2"></i> In Roadmap — Priority TBD
+        </button>
+      </div>
+    </div>
+
+    <!-- ── 5. INTRADAY (COMING SOON) ── -->
+    <div class="strat-card" style="--accent:var(--c5)">
+      <span class="status-badge status-soon">⏳ Coming 2026</span>
+
+      <div class="card-top">
+        <div class="card-meta">
+          <div class="strat-name">Intraday Algo</div>
+          <div class="tag-row">
+            <span class="tag tag-market">BankNifty</span>
+            <span class="tag tag-risk-high">High Risk</span>
+          </div>
+        </div>
+        <div class="strat-icon" style="color:var(--c5)">⚡</div>
+      </div>
+
+      <div class="strat-desc">High-frequency intraday scalping strategy. Multiple trades per day with quick profit booking and tight stops.</div>
+
+      <div class="payoff-wrap">
+        <div class="payoff-label">Payoff Diagram</div>
+        <svg class="payoff-svg" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g5" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#f87171" stop-opacity="0.7"/>
+            <stop offset="40%"  stop-color="#a855f7" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.9"/>
+          </linearGradient></defs>
+          <line x1="0" y1="50" x2="300" y2="50" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+          <polyline points="0,65 40,30 70,50 100,20 130,55 160,35 190,48 220,15 250,45 300,10" fill="none" stroke="url(#g5)" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
+        <div class="axis-labels"><span class="axis-loss">Loss</span><span class="axis-profit">Profit</span></div>
+      </div>
+
+      <div class="logic-grid">
+        <div class="logic-box entry">
+          <div class="logic-title">↗ Entry Logic</div>
+          <p>Trade opening range breakouts in first 30 mins. Momentum-based entries with tight stops.</p>
+        </div>
+        <div class="logic-box exit">
+          <div class="logic-title">↘ Exit Logic</div>
+          <p>Book profits at 1:1.5 RR. Square off all positions by 3:15 PM.</p>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-val" style="color:var(--c5)">15–25%</span><span class="stat-lbl">Monthly Return</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#34d399">55%</span><span class="stat-lbl">Win Rate</span></div>
+        <div class="stat-item"><span class="stat-val" style="color:#f87171">20%</span><span class="stat-lbl">Max Drawdown</span></div>
+      </div>
+
+      <div class="card-cta">
+        <button class="btn-strat dimmed" style="background:linear-gradient(135deg,#a855f7,#7c3aed)">
+          <i class="fas fa-clock me-2"></i> Coming 2026
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /strat-grid -->
+
+  <!-- Footer CTA -->
+  <div class="strat-footer">
+    <h3>Ready to Start Trading?</h3>
+    <p>Connect your broker and let our algorithms work for you</p>
+    {% if not user.is_authenticated %}
+      <a href="{% url 'auth' %}?mode=login" class="btn-footer">
+        <i class="fas fa-plug"></i> Get Started Now
+      </a>
+    {% else %}
+      <a href="{% url 'short_strangle_detail' %}" class="btn-footer">
+        <i class="fas fa-rocket"></i> Launch Live Strategy
+      </a>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

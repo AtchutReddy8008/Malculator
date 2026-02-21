@@ -65,6 +65,13 @@ urlpatterns = [
 
     # Optional legacy route (redirects to broker page now)
     path('connect-zerodha/', views.connect_zerodha, name='connect_zerodha'),
+    
+    #my own fronnt pages
+    # urls.py
+    path('public_pnl/', views.public_pnl_overview, name='public_pnl'),
+    path('public_algorithms/', views.public_algorithms, name='public_algorithms'),
+    path('public_brokers/', views.public_brokers, name='public_brokers'),
+    path('public_about/', views.public_about, name='public_about'),
 ]
 
 # # niftybot/urls.py

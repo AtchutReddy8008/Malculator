@@ -786,3 +786,17 @@ def user_logout(request):
     logout(request)
     messages.info(request, 'You have been logged out.')
     return redirect('home')
+
+# Better naming suggestions
+
+def public_pnl_overview(request):
+    return render(request, 'front/pnl.html')
+
+def public_algorithms(request):
+    return render(request, 'front/algo.html')
+
+def public_brokers(request):
+    return render(request, 'front/brok.html')
+
+def public_about(request):
+    return render(request, 'front/about.html')
