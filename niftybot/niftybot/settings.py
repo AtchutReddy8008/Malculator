@@ -86,23 +86,23 @@ WSGI_APPLICATION = 'niftybot.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
 # DATABASES = {
 #     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'postgres',
-#         'USER': 'postgres',
-#         'PASSWORD': 'Atchut1234',
-#         'HOST': 'mydb.cfao4qgschot.ap-south-1.rds.amazonaws.com',
-#         'PORT': '5432',
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
 #     }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': 'postgres',
+        'PASSWORD': 'Atchut1234',
+        'HOST': 'rohitdb.ckl6umkmkrui.us-east-1.rds.amazonaws.com',
+        'PORT': '5432',
+    }
+}
 #pip install psycopg2-binary
 
 
@@ -136,20 +136,22 @@ USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 import os
 
 STATIC_URL = '/static/'
 
+
+# Development: local static files folder
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
+
+# Production: where collectstatic will collect files
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# STATIC_URL = '/static/'
-# STATICFILES_DIRS = [
-#     BASE_DIR / "static",
-# ]
 
-STATIC_ROOT = BASE_DIR / 'staticfiles'         # Production: collectstatic destination
+
 
 # Media files (user uploads - if you add any later)
 MEDIA_URL = '/media/'
