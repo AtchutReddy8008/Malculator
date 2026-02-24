@@ -13,7 +13,7 @@ print("qty:", bs.state_json.get('qty'))
 # ---------------------------------------------------------------------
 from trading.models import BotStatus, User
 
-user = User.objects.get(username='balaji')
+user = User.objects.get(username='tradewithnaman')
 bs = BotStatus.objects.get(user=user)
 
 # Optional safety check
@@ -86,35 +86,65 @@ sudo python manage.py runserver 0.0.0.0:80
 sudo apt update
 sudo apt install python3-venv python3-pip nginx gunicorn
 
-sudo nano /etc/nginx/sites-available/nifty-trading-bot
+sudo nano /etc/systemd/system/gunicorn.service
+
+[Unit]
+Description=Gunicorn for NiftyBot
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/calculator/niftybot
+
+Environment="PATH=/home/ubuntu/calculator/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=niftybot.settings"
+
+ExecStart=/home/ubuntu/calculator/venv/bin/gunicorn \
+    niftybot.wsgi:application \
+    --bind 127.0.0.1:8000 \
+    --workers 3
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+--------------------------------------------------------------
+sudo systemctl daemon-reload
+sudo systemctl start gunicorn
+sudo systemctl enable gunicorn
+sudo systemctl status gunicorn
+
+--------------------------
+sudo nano /etc/nginx/sites-available/niftybot
 
 server {
     listen 80;
-    listen [::]:80;
+    server_name tradewithnaman.com www.tradewithnaman.com;
 
-    server_name 13.200.11.202;  # or your domain later
+    location /static/ {
+        alias /home/ubuntu/calculator/niftybot/staticfiles/;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Optional: serve static files directly (recommended)
-    location /static/ {
-        alias /home/ubuntu/yourproject/static/;  # ← change to your actual static folder path
-    }
-
-    location /media/ {
-        alias /home/ubuntu/yourproject/media/;   # ← change if you use media
     }
 }
+-------------------------
 
-sudo ln -s /etc/nginx/sites-available/nifty-trading-bot /etc/nginx/sites-enabled/
-
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d tradewithnaman.com -d www.tradewithnaman.com
+---------------------------------------------------------------------------
+sudo ln -s /etc/nginx/sites-available/niftybot /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 
-gunicorn --bind 127.0.0.1:8000 niftybot.wsgi:application
+
+
+
+-----------------------
+sudo systemctl stop gunicorn
+sudo systemctl start gunicorn

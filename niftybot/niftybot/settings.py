@@ -27,7 +27,20 @@ SECRET_KEY = 'django-insecure-CHANGE-THIS-TO-A-VERY-LONG-RANDOM-STRING-IN-PRODUC
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']  # ← CHANGE IN PRODUCTION: add your real domain
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'tradewithnaman.com',
+    'www.tradewithnaman.com',
+    '3.80.63.227',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://tradewithnaman.com',
+    'https://www.tradewithnaman.com',
+]
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -86,6 +99,7 @@ WSGI_APPLICATION = 'niftybot.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
+
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.sqlite3',
@@ -98,8 +112,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'postgres',
         'USER': 'postgres',
-        'PASSWORD': 'Atchut1234',
-        'HOST': 'rohitdb.ckl6umkmkrui.us-east-1.rds.amazonaws.com',
+        'PASSWORD': 'tradewithme',
+        'HOST': 'database-2.ckl6umkmkrui.us-east-1.rds.amazonaws.com',
         'PORT': '5432',
     }
 }
@@ -149,8 +163,6 @@ STATICFILES_DIRS = [
 
 # Production: where collectstatic will collect files
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-
 
 
 # Media files (user uploads - if you add any later)
@@ -302,9 +314,3 @@ LOGGING = {
 # ───────────────────────────────────────────────
 # STATIC FILES (CSS, JS, Images)
 # ───────────────────────────────────────────────
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "static",
-]
-          # Development: local static files
-STATIC_ROOT = BASE_DIR / 'staticfiles'            # Production: collectstatic destination

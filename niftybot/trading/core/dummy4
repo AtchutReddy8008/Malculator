@@ -27,10 +27,10 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(12, 29, 0)
-    ENTRY_END = dtime(12, 30, 30)
+    ENTRY_START = dtime(9, 21, 0)
+    ENTRY_END = dtime(9, 22, 30)
     TOKEN_REFRESH_TIME = dtime(8, 30)
-    EXIT_TIME = dtime(10, 45)
+    EXIT_TIME = dtime(15, 00)
     MARKET_CLOSE = dtime(15, 30)
     MAIN_DISTANCE = 150
     HEDGE_PREMIUM_RATIO = 0.10
@@ -193,9 +193,11 @@ class DBState:
         else:
             self.bot_status.state_json = data_to_save
             self.bot_status.save(update_fields=['state_json'])
-        self.bot_status.current_unrealized_pnl = Decimal(str(self.data.get("realized_pnl", 0)))
+        # ── BUG FIX #4: Do NOT write realized_pnl to current_unrealized_pnl here.
+        # current_unrealized_pnl is updated correctly by the heartbeat using algo_pnl().
+        # Only persist the margin field which is safe to update from state.
         self.bot_status.current_margin = Decimal(str(self.data.get("exact_margin_used_by_trade", 0)))
-        self.bot_status.save()
+        self.bot_status.save(update_fields=['current_margin'])
 
     def daily_reset(self):
         today = datetime.now(Config.TIMEZONE).date()
@@ -239,8 +241,9 @@ class DBState:
             "exit_final_pnl": 0.0,
         })
         self.save()
-        today = datetime.now(Config.TIMEZONE).date()
-        self.bot_status.entry_attempted_date = today
+        # ── BUG FIX #3: Set entry_attempted_date to None (not today) so
+        # the bot can re-enter on the same day if needed after a reset.
+        self.bot_status.entry_attempted_date = None
         self.bot_status.save(update_fields=['entry_attempted_date'])
 
 # ===================== HELPER =====================
@@ -777,7 +780,7 @@ class Engine:
                 "entry_vix": round(entry_vix, 2),
                 "total_credit": round(total_credit),
                 "remaining_days": remaining_days,
-                "daily_target_before_98%": round(today_target)
+                "daily_target_before_97%": round(today_target)
             })
         else:
             margin_for_target = self.state.data.get("final_margin_used", 0.0)
@@ -790,11 +793,11 @@ class Engine:
             self.logger.info("High VIX mode - using 2.0% of final_margin", {
                 "entry_vix": round(entry_vix, 2),
                 "final_margin": round(margin_for_target),
-                "daily_target_before_98%": round(today_target)
+                "daily_target_before_97%": round(today_target)
             })
         today_target *= 0.97
         today_target = round(today_target)
-        self.logger.info("Target adjusted to 98% of calculated", {"final_daily_target_₹": today_target})
+        self.logger.info("Target adjusted to 97% of calculated", {"final_daily_target_₹": today_target})
         self.lock_target(today_target)
 
     def preview_profit_calculation(self):
@@ -847,13 +850,13 @@ class Engine:
         remaining_days = self.calculate_trading_days_including_today(today)
         if vix_val and vix_val <= Config.VIX_THRESHOLD_FOR_PERCENT_TARGET:
             credit_based_today = net_credit_total / remaining_days if remaining_days > 0 else net_credit_total
-            projected_target = round(credit_based_today * 0.98)
+            projected_target = round(credit_based_today * 0.97)
             target_mode = "theta ÷ days"
             target_display = f"+₹{projected_target:,}"
         else:
             _, estimated_final = self.exact_margin_for_basket([dict(l, quantity=qty) for l in legs])
             capital_based_today = estimated_final * Config.PERCENT_TARGET_WHEN_VIX_HIGH
-            projected_target = round(capital_based_today * 0.98)
+            projected_target = round(capital_based_today * 0.97)
             target_mode = "2.0% of final margin"
             target_display = f"+₹{projected_target:,} (final margin ≈ ₹{round(estimated_final):,})"
         mode = "PREVIEW (ASSUMING 1 LOT)" if preview_mode else "LIVE PREVIEW"
@@ -869,9 +872,9 @@ class Engine:
         print(f" Buy PE Hedge {pe_hedge or 'N/A':5} → ₹{pe_hedge_p:.2f}")
         print(f"\nNet Credit per lot : ₹{net_credit_per_lot:.2f} × {actual_lots} lot(s) × {Config.LOT_SIZE} = ₹{net_credit_total:,.0f}")
         if vix_val and vix_val <= Config.VIX_THRESHOLD_FOR_PERCENT_TARGET:
-            print(f"Projected Daily Target (Net Credit ÷ Days × 0.98) : +₹{projected_target:,}")
+            print(f"Projected Daily Target (Net Credit ÷ Days × 0.97) : +₹{projected_target:,}")
         else:
-            print(f"Projected Daily Target (2.0% of estimated final margin × 0.98) : {target_display}")
+            print(f"Projected Daily Target (2.0% of estimated final margin × 0.97) : {target_display}")
         print("\n" + "="*80 + "\n")
 
     def startup_banner(self):
@@ -1090,6 +1093,9 @@ class Engine:
         if pe_hedge_sym:
             algo_legs["PE_HEDGE"] = create_leg(pe_hedge_sym, "BUY", qty, entry_prices.get(pe_hedge_sym, 0))
 
+        # ── Store entry_time as ISO string so it survives JSON serialization ──────
+        entry_time_str = datetime.now(Config.TIMEZONE).isoformat()
+
         self.state.data.update({
             "trade_active": True,
             "trade_taken_today": True,
@@ -1116,7 +1122,7 @@ class Engine:
                 "pe_hedge": entry_prices.get(pe_hedge_sym, 0),
             },
             "qty": qty,
-            "entry_time": datetime.now(Config.TIMEZONE)
+            "entry_time": entry_time_str,   # ← BUG FIX #1: always store as ISO string
         })
 
         if ce_hedge:
@@ -1134,13 +1140,26 @@ class Engine:
             position_qty[pe_hedge_sym] = +qty
         self.state.data["position_qty"] = position_qty
 
+        # ── Lock entry_attempted_date so duplicate entries are prevented ──────────
+        with transaction.atomic():
+            bot_status = BotStatus.objects.select_for_update().get(user=self.user)
+            bot_status.entry_attempted_date = today
+            bot_status.save(update_fields=['entry_attempted_date'])
+
         self.logger.critical("=== POST-ENTRY STATE DEBUG SNAPSHOT ===")
         self.logger.critical(f"trade_active: {self.state.data.get('trade_active')}")
         self.logger.critical(f"qty / lots: {self.state.data.get('qty')} (lots: {self.state.data['positions'].get('lots')})")
         self.logger.critical(f"algo_legs keys: {list(self.state.data.get('algo_legs', {}).keys())}")
         self.logger.critical(f"algo_legs content: {self.state.data.get('algo_legs')}")
         self.logger.critical(f"entry_premiums: {self.state.data.get('entry_premiums')}")
-        self.logger.critical(f"Initial net credit per lot approx: {self.state.data['entry_premiums'].get('ce_short', 0) + self.state.data['entry_premiums'].get('pe_short', 0) - self.state.data['entry_premiums'].get('ce_hedge', 0) - self.state.data['entry_premiums'].get('pe_hedge', 0):.2f}")
+        self.logger.critical(f"entry_time stored as: {self.state.data.get('entry_time')}")
+        net_credit = (
+            self.state.data['entry_premiums'].get('ce_short', 0) +
+            self.state.data['entry_premiums'].get('pe_short', 0) -
+            self.state.data['entry_premiums'].get('ce_hedge', 0) -
+            self.state.data['entry_premiums'].get('pe_hedge', 0)
+        )
+        self.logger.critical(f"Initial net credit per lot approx: {net_credit:.2f}")
         current_pnl = self.algo_pnl()
         self.logger.critical(f"Current algo_pnl() immediately after entry: {current_pnl:.2f}")
 
@@ -1149,6 +1168,10 @@ class Engine:
         self.logger.big_banner(f"TRADE ENTERED SUCCESSFULLY | TODAY'S TARGET: +₹{final_target:,} | STOP LOSS: -₹{final_target:,}")
 
         self.state.save()
+
+        # ── Reset spike guard baseline to current PnL after entry ────────────────
+        self.last_pnl = self.algo_pnl()
+
         time.sleep(2)
         return True
 
@@ -1263,6 +1286,8 @@ class Engine:
             time.sleep(5)
             actual_margin_used = self.actual_used_capital()
             self.state.data["exact_margin_used_by_trade"] = actual_margin_used
+            # Reset spike guard after adjustment so new PnL baseline is established
+            self.last_pnl = self.algo_pnl()
         if (spot <= pe_short - Config.ADJUSTMENT_TRIGGER_POINTS and
                 self.state.data["adjustments_today"]["pe"] < Config.MAX_ADJUSTMENTS_PER_SIDE_PER_DAY):
             self.logger.info("DEFENSIVE ADJUSTMENT: PE STRUCK", {"spot": spot, "old_strike": pe_short})
@@ -1330,6 +1355,8 @@ class Engine:
             time.sleep(5)
             actual_margin_used = self.actual_used_capital()
             self.state.data["exact_margin_used_by_trade"] = actual_margin_used
+            # Reset spike guard after adjustment so new PnL baseline is established
+            self.last_pnl = self.algo_pnl()
         if adjusted:
             self.state.data["algo_legs"] = algo_legs
             self.update_daily_profit_target(force=True)
@@ -1340,30 +1367,50 @@ class Engine:
         now_t = datetime.now(Config.TIMEZONE).time()
         if now_t >= Config.EXIT_TIME:
             return "Scheduled exit time reached"
+
         now = datetime.now(Config.TIMEZONE)
+
+        # ── BUG FIX #1: Parse entry_time from ISO string safely ──────────────────
         entry_time = self.state.data.get("entry_time")
+        if isinstance(entry_time, str):
+            try:
+                entry_time = datetime.fromisoformat(entry_time)
+                if entry_time.tzinfo is None:
+                    entry_time = Config.TIMEZONE.localize(entry_time)
+            except Exception as parse_err:
+                self.logger.warning(f"Could not parse entry_time string: {entry_time} | err: {parse_err}")
+                entry_time = None
+        # If it somehow came back as a datetime already (e.g. in-memory before save), use it directly
         time_since_entry = (now - entry_time).total_seconds() if entry_time else float('inf')
+
         pnl_val = self.algo_pnl()
         target_rupee = self.state.data.get("profit_target_rupee", 0.0)
-        if abs(pnl_val - self.last_pnl) > target_rupee * 0.2:
+
+        # ── BUG FIX #2: P&L spike guard must update last_pnl even when firing ─────
+        # Without this, last_pnl stays at 0 forever and every move looks like a spike.
+        if target_rupee > 0 and abs(pnl_val - self.last_pnl) > target_rupee * 0.2:
             self.logger.critical("P&L SPIKE DETECTED - IGNORING FOR SAFETY", {
                 "current": pnl_val,
                 "last": self.last_pnl,
                 "jump": pnl_val - self.last_pnl
             })
+            self.last_pnl = pnl_val   # ← KEY FIX: advance baseline so next tick compares correctly
             return None
         self.last_pnl = pnl_val
+
         if time_since_entry < 300 and abs(pnl_val) > 2500:
             self.logger.critical("EXTREME P&L GLITCH DETECTED - IGNORED", {
                 "pnl": pnl_val,
                 "seconds_since_entry": time_since_entry
             })
             return None
+
         if target_rupee > 0:
             if pnl_val >= target_rupee and time_since_entry >= Config.MIN_HOLD_SECONDS_FOR_PROFIT:
                 return f"Profit target reached ₹{pnl_val:,.0f}"
             if pnl_val <= -target_rupee:
                 return f"Stop loss hit ₹{pnl_val:,.0f}"
+
         vix_now = self.vix()
         if vix_now and vix_now >= Config.VIX_EXIT_ABS:
             return "VIX absolute exit"
@@ -1477,6 +1524,8 @@ class Engine:
             })
 
             self.state.full_reset()
+            # Reset spike guard baseline after exit
+            self.last_pnl = 0.0
 
         except Exception as e:
             self.logger.critical("EXIT CRASHED", {"error": str(e), "trace": traceback.format_exc()})
@@ -1603,10 +1652,12 @@ class TradingApplication:
                         if expected_qty > 0 and current_qty == 0:
                             self.logger.big_banner("MANUAL CLOSE DETECTED - AUTO RECOVERING")
                             self.engine.state.full_reset()
+                            # Reset spike guard when state is cleared
+                            self.engine.last_pnl = 0.0
                 except Exception as e:
                     self.logger.error("Periodic manual close check failed", {"error": str(e)})
 
-                if dtime(8, 55) <= current_time < dtime(10, 5):
+                if dtime(8, 55) <= current_time < dtime(10, 30):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         self.engine.load_instruments()
@@ -1766,6 +1817,7 @@ class TradingApplication:
                 if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                     try:
                         bot_status = BotStatus.objects.get(user=self.user)
+                        # ── BUG FIX #4: Heartbeat correctly uses algo_pnl() for unrealized PnL display ──
                         current_pnl = float(self.engine.algo_pnl() or 0)
                         current_margin = float(self.engine.actual_used_capital() or 0)
                         bot_status.last_heartbeat = timezone.now()

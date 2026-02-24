@@ -87,8 +87,8 @@ sudo apt install screen -y
 
 screen -S Django
 
-cd /root/calculator/niftybot
-source /root/calculator/venv/bin/activate
+source venv/Scripts/activate
+source venv/bin/activate
 
 python manage.py runserver 0.0.0.0:8000 --noreload
 
@@ -96,8 +96,7 @@ CTRL+A + D
 ----------------
 screen -S celery
 
-cd /root/calculator/nifty
-source /root/calculator/venv/bin/activate
+source venv/Scripts/activate
 
 
 celery -A niftybot worker -l info --pool=gevent --concurrency=100
