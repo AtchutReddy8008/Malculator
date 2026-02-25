@@ -26,8 +26,8 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(11, 39, 0)
-    ENTRY_END = dtime(11, 40, 30)
+    ENTRY_START = dtime(9, 21, 0)
+    ENTRY_END = dtime(9, 22, 30)
     # ENTRY_START = dtime(9, 15, 0)  # Uncomment for testing wider window
     # ENTRY_END   = dtime(9, 45, 0)
     TOKEN_REFRESH_TIME = dtime(8, 30)
