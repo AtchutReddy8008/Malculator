@@ -7,25 +7,34 @@ sudo apt install redis-server -y && sudo systemctl enable --now redis-server
 redis-cli ping   # should say PONG
 
 
-
+sudo systemctl enable gunicorn
+sudo systemctl start gunicorn
+sudo systemctl restart nginx
 -------------------------------------------------------
 
 
 sudo nano /etc/systemd/system/niftybot-django.service
 
+
+
+sudo nano /etc/systemd/system/gunicorn.service
+
 [Unit]
-Description=NIFTY Django Server
-After=network.target redis-server.service
+Description=Gunicorn for NiftyBot
+After=network.target
 
 [Service]
-User=root
-WorkingDirectory=/root/web/niftybot
-ExecStart=/root/web/venv/bin/python manage.py runserver 0.0.0.0:8000 --noreload
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Malculator/niftybot
+Environment="PATH=/home/ubuntu/Malculator/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=niftybot.settings"
+ExecStart=/home/ubuntu/Malculator/venv/bin/gunicorn niftybot.wsgi:application --bind 127.0.0.1:8000 --workers 3
 Restart=always
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
+
+
 
 
 
@@ -47,22 +56,6 @@ sudo journalctl -u niftybot-django -f
 
 -------------------------------------------------------
 
-sudo nano /etc/systemd/system/niftybot-celery.service
-
-
-[Unit]
-Description=NIFTY Celery Worker
-After=network.target redis-server.service
-
-[Service]
-User=root
-WorkingDirectory=/root/web
-ExecStart=/root/web/venv/bin/celery -A niftybot worker -l info --pool=gevent --concurrency=100
-Restart=always
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
 
 ------------------------------------------------------------
 sudo systemctl daemon-reload
@@ -120,7 +113,7 @@ CTRL + C
 exit
 
 
-
+screen -S 1116.celery -X quit
 
 
 
@@ -144,11 +137,17 @@ pip install gunicorn
 
 gunicorn niftybot.wsgi:application --bind 127.0.0.1:8000
 
-sudo nano /etc/nginx/sites-available/niftybot
+sudo nano /etc/nginx/sites-available/default
 
 server {
     listen 80;
-    server_name 13.200.11.202;
+    server_name 3.80.63.227 tradewithnaman.com www.tradewithnaman.com;
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+
+    location /static/ {
+        root /home/ubuntu/Malculator/niftybot;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8000;

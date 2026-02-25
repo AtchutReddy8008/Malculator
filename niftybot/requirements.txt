@@ -30,9 +30,8 @@ psycopg2-binary==2.9.9
 #pip install -r requirements.txt
 #pip list | findstr "Django celery redis kiteconnect pandas numpy requests pyotp pytz holidays psutil psycopg2"
 
-#python -m pip install celery==5.3.4 django-celery-beat==2.5.0 django django-celery-results redis pandas numpy requests pyotp holidays psutil kiteconnect pytz setuptools==68.2.2
-
-
+#python -m pip install celery==5.3.4 django-celery-beat==2.5.0 django-celery-results django django-redis redis pandas numpy requests pyotp holidays psutil kiteconnect pytz setuptools==68.2.2 psycopg2-binary==2.9.9
+python -m pip install --upgrade pip setuptools==68.2.2 && python -m pip install celery==5.3.4 django-celery-beat==2.5.0 django-celery-results django django-redis redis pandas numpy requests pyotp holidays psutil kiteconnect pytz
 -------------------------------------------------------------------------------------
 
 # Database (optional – PostgreSQL support)

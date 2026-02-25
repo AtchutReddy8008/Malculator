@@ -80,9 +80,7 @@ class AuthView(View):
                 messages.success(request, "Account created successfully! Welcome to your dashboard.")
                 return redirect('dashboard')
             else:
-                # Show form errors on the signup tab
                 messages.error(request, "Please correct the errors below.")
-                # Optional: print to console for debugging
                 print("Signup form errors:", form.errors)
 
         # If form invalid → re-render with the active tab preserved
@@ -211,24 +209,6 @@ def dashboard_stats(request):
         data['current_margin'] = float(bot_status.current_margin or 0)
         data['daily_target'] = float(bot_status.daily_profit_target or 0)
         data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
-
-        # Live fallback only if cache is zero and bot is running
-        if cached_pnl == 0 and bot_status.is_running:
-            try:
-                from .core.bot_original import Engine, DBLogger
-                broker = Broker.objects.filter(user=user, broker_name='ZERODHA').first()
-                if broker and broker.access_token:
-                    logger = DBLogger(user)
-                    engine = Engine(user, broker, logger)
-                    live_pnl = engine.algo_pnl()
-                    if live_pnl != 0:
-                        data['current_unrealized_pnl'] = float(live_pnl)
-                        data['pnl_source'] = 'live_fallback'
-                        bot_status.current_unrealized_pnl = Decimal(str(live_pnl))
-                        bot_status.save(update_fields=['current_unrealized_pnl'])
-            except Exception as e:
-                data['pnl_source'] = 'error'
-                data['error_message'] = str(e)[:100]
 
     today_pnl = DailyPnL.objects.filter(user=user, date=date.today()).first()
     if today_pnl:
@@ -494,15 +474,6 @@ def get_user_stats(user):
     }
 
 
-def calculate_overall_day_win_rate(user):
-    qs = DailyPnL.objects.filter(user=user)
-    total_days = qs.count()
-    if total_days == 0:
-        return 0.0
-    winning_days = qs.filter(pnl__gt=0).count()
-    return round((winning_days / total_days) * 100, 2)
-
-
 def calculate_average_pnl(user):
     qs = DailyPnL.objects.filter(user=user)
     count = qs.count()
@@ -537,6 +508,15 @@ def get_current_streak(user, streak_type='win'):
     return streak
 
 
+def get_zerodha_broker(user):
+    return Broker.objects.filter(user=user, broker_name='ZERODHA').first()
+
+
+def is_zerodha_ready(user):
+    broker = get_zerodha_broker(user)
+    return bool(broker and broker.access_token)
+
+
 @login_required
 @require_POST
 @csrf_protect
@@ -559,20 +539,21 @@ def start_bot(request):
                     'message': 'Bot already running (race condition prevented).'
                 }, status=409)
 
+            # Launch task - let the TASK set is_running=True
             result = run_user_bot.delay(user.id)
 
-            bot_status.is_running = True
+            # Only save task ID and timestamps - do NOT set is_running here
             bot_status.celery_task_id = result.id
             bot_status.last_started = timezone.now()
             bot_status.last_error = None
             bot_status.save(update_fields=[
-                'is_running', 'celery_task_id', 'last_started', 'last_error'
+                'celery_task_id', 'last_started', 'last_error'
             ])
 
         LogEntry.objects.create(
             user=user,
             level='INFO',
-            message='Bot started – Celery task launched',
+            message='Bot start requested – Celery task launched',
             details={'task_id': result.id, 'time': str(timezone.now())}
         )
 
@@ -719,46 +700,6 @@ def user_logout(request):
     return redirect('home')
 
 
-# @login_required
-# def strategies_list(request):
-#     context = {
-#         'strategies': [
-#             {
-#                 'name': 'Short Strangle',
-#                 'description': 'Hedged weekly NIFTY options selling with defensive adjustments',
-#                 'status': 'active',
-#                 'url_name': 'short_strangle_detail',
-#                 'icon': 'fas fa-scissors',
-#                 'color': 'success'
-#             },
-#             {
-#                 'name': 'Delta BTCUSD',
-#                 'description': 'Delta-neutral perpetual futures strategy on BTC/USD',
-#                 'status': 'coming_soon',
-#                 'url_name': 'delta_btcusd_detail',
-#                 'icon': 'fab fa-bitcoin',
-#                 'color': 'secondary'
-#             },
-#             {
-#                 'name': 'Nifty Buy',
-#                 'description': 'Momentum-based long entries on NIFTY with trend filters',
-#                 'status': 'coming_soon',
-#                 'url_name': 'nifty_buy_detail',
-#                 'icon': 'fas fa-arrow-up',
-#                 'color': 'secondary'
-#             },
-#             {
-#                 'name': 'Nifty Sell',
-#                 'description': 'Counter-trend short entries on NIFTY with mean-reversion signals',
-#                 'status': 'coming_soon',
-#                 'url_name': 'nifty_sell_detail',
-#                 'icon': 'fas fa-arrow-down',
-#                 'color': 'secondary'
-#             },
-#         ]
-#     }
-#     return render(request, 'trading/strategies_list.html', context)
-
 @login_required
 def strategies_list(request):
     context = {
@@ -802,6 +743,7 @@ def strategies_list(request):
     }
     return render(request, 'trading/strategies_list.html', context)
 
+
 @login_required
 def about_us(request):
     return render(request, 'trading/about.html')
@@ -824,21 +766,22 @@ def connect_zerodha(request):
     messages.info(request, "Zerodha connection is now managed on the Broker page.")
     return redirect('broker')
 
-def user_logout(request):
-    logout(request)
-    messages.info(request, 'You have been logged out.')
-    return redirect('home')
 
-# Better naming suggestions
-
+@login_required
 def public_pnl_overview(request):
     return render(request, 'front/pnl.html')
 
+
+@login_required
 def public_algorithms(request):
     return render(request, 'front/algo.html')
 
+
+@login_required
 def public_brokers(request):
     return render(request, 'front/brok.html')
 
+
+@login_required
 def public_about(request):
     return render(request, 'front/about.html')
