@@ -26,8 +26,8 @@ class Config:
     EXCHANGE = "NFO"
     UNDERLYING = "NIFTY"
     LOT_SIZE = 65
-    ENTRY_START = dtime(11, 49, 0)
-    ENTRY_END = dtime(11, 50, 30)
+    ENTRY_START = dtime(14, 29, 0)
+    ENTRY_END = dtime(14, 30, 30)
     # ENTRY_START = dtime(9, 15, 0)  # Uncomment for testing wider window
     # ENTRY_END   = dtime(9, 45, 0)
     TOKEN_REFRESH_TIME = dtime(8, 30)
@@ -57,7 +57,8 @@ class Config:
     ORDER_TIMEOUT = 10
     PNL_CHECK_INTERVAL_SECONDS = 1
     MIN_HOLD_SECONDS_FOR_PROFIT = 1800
-    HEARTBEAT_INTERVAL = 5
+    HEARTBEAT_INTERVAL = 5        # seconds between DB heartbeat writes (dashboard refresh rate)
+    PNL_CACHE_TTL = 3             # seconds LTP cache is valid — keep short so PnL stays fresh
     PERIODIC_PNL_SNAPSHOT_INTERVAL = 300
 
 INDIA_HOLIDAYS = holidays.India()
@@ -492,7 +493,7 @@ class Engine:
             if sym is None:
                 continue
             cache_entry = self.ltp_cache.get(sym.strip())
-            if cache_entry and now - cache_entry['ts'] < 8:
+            if cache_entry and now - cache_entry['ts'] < Config.PNL_CACHE_TTL:
                 result[sym] = cache_entry['price']
             else:
                 to_fetch.append(sym.strip())
@@ -692,15 +693,15 @@ class Engine:
             return fallback, fallback * 0.85
 
     def calculate_lots(self, legs: List[dict]) -> int:
-        # 1. Get frontend-selected lot size
+        # 1. Get the dashboard hard cap — this is the MAXIMUM the user allows
         try:
-            user_fixed_lots = self.state.bot_status.max_lots_hard_cap
-            if not isinstance(user_fixed_lots, int) or user_fixed_lots < 1:
-                user_fixed_lots = 1
+            hard_cap = self.state.bot_status.max_lots_hard_cap
+            if not isinstance(hard_cap, int) or hard_cap < 1:
+                hard_cap = 1
         except (AttributeError, BotStatus.DoesNotExist):
-            user_fixed_lots = 1
+            hard_cap = 1
 
-        # 2. Check minimum capital requirement
+        # 2. Check minimum capital
         capital = self.capital_available()
         if capital < Config.MIN_CAPITAL_FOR_1LOT:
             self.logger.warning("Capital too low for even 1 lot", {
@@ -709,33 +710,34 @@ class Engine:
             })
             return 0
 
-        # 3. Check required margin for requested lots
+        # 3. Get margin for exactly 1 lot to find per-lot cost
         try:
-            test_qty = user_fixed_lots * Config.LOT_SIZE
-            margin_legs = [dict(l, quantity=test_qty) for l in legs]
-            initial_margin, final_margin = self.exact_margin_for_basket(margin_legs)
+            one_lot_legs = [dict(l, quantity=Config.LOT_SIZE) for l in legs]
+            initial_margin_1lot, _ = self.exact_margin_for_basket(one_lot_legs)
         except Exception as e:
-            self.logger.error("Margin calculation failed", {
-                "error": str(e)
-            })
+            self.logger.error("Margin calculation failed", {"error": str(e)})
             return 0
 
-        if capital < initial_margin:
-            self.logger.warning("Insufficient capital for requested lot size", {
-                "requested_lots": user_fixed_lots,
-                "required_margin": round(initial_margin),
-                "available_capital": round(capital)
-            })
+        if initial_margin_1lot <= 0:
+            self.logger.error("Margin API returned 0 — cannot size lots safely")
             return 0
 
-        # 4. Final lot confirmation
-        self.logger.info("Fixed lot size confirmed from frontend", {
-            "final_lots": user_fixed_lots,
-            "required_margin": round(initial_margin),
-            "available_capital": round(capital)
+        # 4. Auto-size: how many lots can capital afford? (same as standalone script)
+        affordable_lots = int((capital * Config.MAX_CAPITAL_USAGE) // initial_margin_1lot)
+
+        # 5. Apply hard cap from dashboard — user cannot exceed this
+        final_lots = min(affordable_lots, hard_cap, Config.MAX_LOTS)
+        final_lots = max(final_lots, 0)  # never negative
+
+        self.logger.info("Lot sizing result", {
+            "available_capital": round(capital),
+            "margin_per_lot": round(initial_margin_1lot),
+            "affordable_lots": affordable_lots,
+            "dashboard_hard_cap": hard_cap,
+            "final_lots": final_lots
         })
 
-        return user_fixed_lots
+        return final_lots
 
     def order(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
         filled_price = 0.0
@@ -1782,7 +1784,6 @@ class TradingApplication:
         # Give the DB time to commit is_running=True before the first read.
         time.sleep(3)
 
-        last_pnl_print = time.time()
         last_heartbeat = time.time()
 
         try:
@@ -1833,7 +1834,7 @@ class TradingApplication:
                     self.logger.error("Periodic manual close check failed", {"error": str(e)})
 
                 # ---- INSTRUMENT PRE-LOAD ----
-                if dtime(6, 55) <= current_time < dtime(10, 30):
+                if dtime(6, 55) <= current_time < dtime(15, 30):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         try:
@@ -1950,21 +1951,20 @@ class TradingApplication:
                                 })
                                 self._last_hourly_log = time.time()
 
-                            # LIVE PnL PRINT (every 1s)
-                            if time.time() - last_pnl_print >= 1.0:
-                                pnl_now = self.engine.algo_pnl()
-                                self.logger.info("Live unrealized P&L", {
-                                    "pnl_₹": round(pnl_now, 2),
-                                    "legs_active": len(self.engine.state.data.get("algo_legs", {}))
-                                })
-                                last_pnl_print = time.time()
-
                     else:
                         # ---- ENTRY LOGIC ----
                         if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
                             if today_weekday == 1:
                                 self.logger.critical("TUESDAY SKIP ACTIVATED - NO ENTRY ATTEMPT TODAY")
                                 time.sleep(300)
+                                continue
+
+                            # Fast in-memory guard — if trade was already taken today
+                            # (set in state after successful entry), skip immediately
+                            # without touching the DB. The DB lock in enter() is the
+                            # authoritative guard; this just avoids unnecessary calls.
+                            if self.engine.state.data.get("trade_taken_today"):
+                                time.sleep(5)
                                 continue
 
                             self.logger.critical("ENTRY WINDOW IS OPEN RIGHT NOW", {
@@ -2000,19 +2000,20 @@ class TradingApplication:
                             try:
                                 success = self.engine.enter()
                                 if success:
-                                    # last_successful_entry is now set inside enter() itself
                                     self.logger.big_banner("ENTRY SUCCESS — day permanently locked")
                                     time.sleep(300)
                                 else:
                                     self.logger.warning("Entry attempt failed — day is now locked, no retry today")
-                                    # Sleep until end of entry window to avoid noisy log spam
-                                    time.sleep(120)
+                                    time.sleep(120)  # entry window is 90s, sleep past it
                             except Exception as e:
                                 self.logger.error("Entry execution crashed", {
                                     "error": str(e),
                                     "trace": traceback.format_exc()
                                 })
-                                time.sleep(30)
+                                # Sleep well past the entry window end so even if the DB lock
+                                # failed to set (e.g. DB connection error during locking),
+                                # the loop cannot re-enter the window.
+                                time.sleep(180)
 
                 # ---- INSTRUMENTS NOT LOADED YET - force load if in trading hours ----
                 elif self.engine.instruments is None and dtime(9, 0) <= current_time < dtime(15, 30):
@@ -2033,24 +2034,26 @@ class TradingApplication:
                         self.logger.error("Market close summary failed", {"error": str(e)})
                         self._daily_summary_saved = True  # prevent infinite retry
 
-                # ---- HEARTBEAT ----
+                # ---- HEARTBEAT (every 5s) — writes PnL to DB so dashboard updates ----
                 if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                     try:
                         bot_status = BotStatus.objects.get(user=self.user)
+                        # algo_pnl() uses bulk_ltp() with a 3s cache — fresh enough for 5s heartbeat
                         current_pnl = float(self.engine.algo_pnl() or 0)
-                        current_margin = float(self.engine.actual_used_capital() or 0)
                         bot_status.last_heartbeat = timezone.now()
                         bot_status.current_unrealized_pnl = Decimal(str(current_pnl))
-                        bot_status.current_margin = Decimal(str(current_margin))
-                        bot_status.save(update_fields=[
-                            'last_heartbeat',
-                            'current_unrealized_pnl',
-                            'current_margin'
-                        ])
-                        self.logger.info("Heartbeat saved", {
-                            "unrealized_pnl": round(current_pnl, 2),
-                            "margin": round(current_margin, 2)
-                        })
+                        # Only save margin during active trade; avoids redundant Zerodha API call
+                        # every 5s when nothing has changed. Margin is updated on entry/exit/adjustment.
+                        save_fields = ['last_heartbeat', 'current_unrealized_pnl']
+                        if self.engine.state.data.get("trade_active"):
+                            # Print live PnL to console so Celery logs show it (replaces the old 1s log)
+                            target = self.engine.state.data.get("profit_target_rupee", 0)
+                            print(
+                                f"[PnL] ₹{current_pnl:,.2f} | Target: ₹{target:,} | "
+                                f"Stop: ₹{-target:,}",
+                                flush=True
+                            )
+                        bot_status.save(update_fields=save_fields)
                     except Exception as e:
                         self.logger.warning("Heartbeat save failed", {"error": str(e)})
                     last_heartbeat = time.time()

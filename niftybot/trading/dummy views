@@ -2,7 +2,7 @@
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.views import View
 
 # Celery
 from celery import current_app as celery_app
@@ -31,6 +32,67 @@ from .tasks import run_user_bot, generate_zerodha_token_task
 # Auth helpers
 from .core.auth import generate_and_set_access_token_db
 from kiteconnect import KiteConnect
+
+from django.contrib.auth.forms import AuthenticationForm
+
+
+# ───────────────────────────────────────────────
+# Combined Auth View (Login + Signup on single page)
+# ───────────────────────────────────────────────
+class AuthView(View):
+    template_name = 'trading/auth_combined.html'  # Make sure this file exists!
+    login_form_class = AuthenticationForm
+    signup_form_class = SignUpForm
+
+    def get(self, request):
+        mode = request.GET.get('mode', 'login')  # default to login tab
+
+        login_form = self.login_form_class()
+        signup_form = self.signup_form_class()
+
+        context = {
+            'login_form': login_form,
+            'signup_form': signup_form,
+            'mode': mode,
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request):
+        mode = request.POST.get('form_type', 'login')
+
+        if mode == 'login':
+            form = self.login_form_class(data=request.POST)
+            if form.is_valid():
+                user = form.get_user()
+                login(request, user)
+                messages.success(request, "Welcome back! Dashboard loading...")
+                return redirect('dashboard')
+            else:
+                messages.error(request, "Invalid credentials. Please check and try again.")
+        else:  # signup
+            form = self.signup_form_class(request.POST)
+            if form.is_valid():
+                user = form.save()
+                # Auto-login immediately after signup
+                login(request, user)
+                # Ensure BotStatus exists for the new user
+                BotStatus.objects.get_or_create(user=user)
+                messages.success(request, "Account created successfully! Welcome to your dashboard.")
+                return redirect('dashboard')
+            else:
+                messages.error(request, "Please correct the errors below.")
+                print("Signup form errors:", form.errors)
+
+        # If form invalid → re-render with the active tab preserved
+        login_form = self.login_form_class() if mode != 'login' else form
+        signup_form = self.signup_form_class() if mode != 'signup' else form
+
+        context = {
+            'login_form': login_form,
+            'signup_form': signup_form,
+            'mode': mode,
+        }
+        return render(request, self.template_name, context)
 
 
 def home(request):
@@ -148,24 +210,6 @@ def dashboard_stats(request):
         data['daily_target'] = float(bot_status.daily_profit_target or 0)
         data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
 
-        # Live fallback only if cache is zero and bot is running
-        if cached_pnl == 0 and bot_status.is_running:
-            try:
-                from .core.bot_original import Engine, DBLogger
-                broker = Broker.objects.filter(user=user, broker_name='ZERODHA').first()
-                if broker and broker.access_token:
-                    logger = DBLogger(user)
-                    engine = Engine(user, broker, logger)
-                    live_pnl = engine.algo_pnl()
-                    if live_pnl != 0:
-                        data['current_unrealized_pnl'] = float(live_pnl)
-                        data['pnl_source'] = 'live_fallback'
-                        bot_status.current_unrealized_pnl = Decimal(str(live_pnl))
-                        bot_status.save(update_fields=['current_unrealized_pnl'])
-            except Exception as e:
-                data['pnl_source'] = 'error'
-                data['error_message'] = str(e)[:100]
-
     today_pnl = DailyPnL.objects.filter(user=user, date=date.today()).first()
     if today_pnl:
         data['debug_today_record_exists'] = True
@@ -191,7 +235,7 @@ def dashboard_stats(request):
     data['daily_pnl']   = float(stats['daily_pnl'].pnl if stats['daily_pnl'] else 0)
     data['weekly_pnl']  = float(stats['weekly_pnl'])
     data['monthly_pnl'] = float(stats['monthly_pnl'])
-#reverse
+
     return JsonResponse(data)
 
 
@@ -204,7 +248,6 @@ def calculate_overall_day_win_rate(user):
     return round((winning_days / total_days) * 100, 2)
 
 
-# @login_required
 def broker_page(request):
     broker = Broker.objects.filter(
         user=request.user, broker_name='ZERODHA'
@@ -431,15 +474,6 @@ def get_user_stats(user):
     }
 
 
-def calculate_overall_day_win_rate(user):
-    qs = DailyPnL.objects.filter(user=user)
-    total_days = qs.count()
-    if total_days == 0:
-        return 0.0
-    winning_days = qs.filter(pnl__gt=0).count()
-    return round((winning_days / total_days) * 100, 2)
-
-
 def calculate_average_pnl(user):
     qs = DailyPnL.objects.filter(user=user)
     count = qs.count()
@@ -474,6 +508,15 @@ def get_current_streak(user, streak_type='win'):
     return streak
 
 
+def get_zerodha_broker(user):
+    return Broker.objects.filter(user=user, broker_name='ZERODHA').first()
+
+
+def is_zerodha_ready(user):
+    broker = get_zerodha_broker(user)
+    return bool(broker and broker.access_token)
+
+
 @login_required
 @require_POST
 @csrf_protect
@@ -487,16 +530,6 @@ def start_bot(request):
             'message': 'Bot is already running. No new task launched.'
         }, status=400)
 
-    # ──────────────────────────────────────────────────────────────
-    # TEMPORARILY COMMENTED OUT for debugging — UNCOMMENT LATER!
-    # broker = Broker.objects.filter(user=user, broker_name='ZERODHA', is_active=True).first()
-    # if not broker or not broker.access_token:
-    #     return JsonResponse({
-    #         'success': False,
-    #         'message': 'Zerodha connection not ready. Set up broker first.'
-    #     }, status=400)
-    # ──────────────────────────────────────────────────────────────
-
     try:
         with transaction.atomic():
             bot_status.refresh_from_db()
@@ -506,26 +539,27 @@ def start_bot(request):
                     'message': 'Bot already running (race condition prevented).'
                 }, status=409)
 
+            # Launch task - let the TASK set is_running=True
             result = run_user_bot.delay(user.id)
 
-            bot_status.is_running = True
+            # Only save task ID and timestamps - do NOT set is_running here
             bot_status.celery_task_id = result.id
             bot_status.last_started = timezone.now()
             bot_status.last_error = None
             bot_status.save(update_fields=[
-                'is_running', 'celery_task_id', 'last_started', 'last_error'
+                'celery_task_id', 'last_started', 'last_error'
             ])
 
         LogEntry.objects.create(
             user=user,
             level='INFO',
-            message='Bot started – Celery task launched (broker check temporarily bypassed)',
+            message='Bot start requested – Celery task launched',
             details={'task_id': result.id, 'time': str(timezone.now())}
         )
 
         return JsonResponse({
             'success': True,
-            'message': f'Bot start requested. Task ID: {result.id[:8]}... (check status in 10–30s)',
+            'message': f'Bot start requested. Task ID: {result.id[:8]}...',
             'task_id': result.id
         })
 
@@ -660,23 +694,6 @@ def update_max_lots(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-def signup(request):
-    if request.method == 'POST':
-        form = SignUpForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            BotStatus.objects.get_or_create(user=user)
-            login(request, user)
-            messages.success(request, 'Account created successfully! Welcome.')
-            return redirect('dashboard')
-        else:
-            messages.error(request, 'Please correct the errors below.')
-    else:
-        form = SignUpForm()
-
-    return render(request, 'registration/signup.html', {'form': form})
-
-
 def user_logout(request):
     logout(request)
     messages.info(request, 'You have been logged out.')
@@ -689,37 +706,40 @@ def strategies_list(request):
         'strategies': [
             {
                 'name': 'Short Strangle',
-                'description': 'Hedged weekly NIFTY options selling with defensive adjustments',
+                'icon': 'fas fa-balance-scale',
                 'status': 'active',
                 'url_name': 'short_strangle_detail',
-                'icon': 'fas fa-scissors',
-                'color': 'success'
+                'description': 'Sell OTM Call & Put options to collect premium. Profits from time decay in range-bound markets.',
             },
             {
-                'name': 'Delta BTCUSD',
-                'description': 'Delta-neutral perpetual futures strategy on BTC/USD',
+                'name': 'Nifty Call Strategy',
+                'icon': 'fas fa-chart-line',
                 'status': 'coming_soon',
-                'url_name': 'delta_btcusd_detail',
-                'icon': 'fab fa-bitcoin',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Bullish directional strategy using ATM/ITM calls with defined risk. Perfect for trending markets.',
             },
             {
-                'name': 'Nifty Buy',
-                'description': 'Momentum-based long entries on NIFTY with trend filters',
+                'name': 'Nifty Put Strategy',
+                'icon': 'fas fa-chart-bar',
                 'status': 'coming_soon',
-                'url_name': 'nifty_buy_detail',
-                'icon': 'fas fa-arrow-up',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Bearish directional strategy for downtrending markets. Defined risk with asymmetric reward.',
             },
             {
-                'name': 'Nifty Sell',
-                'description': 'Counter-trend short entries on NIFTY with mean-reversion signals',
+                'name': 'Positional Algo',
+                'icon': 'fas fa-crosshairs',
                 'status': 'coming_soon',
-                'url_name': 'nifty_sell_detail',
-                'icon': 'fas fa-arrow-down',
-                'color': 'secondary'
+                'url_name': '',
+                'description': 'Swing trading strategy holding positions for 3-10 days. Captures larger market moves.',
             },
-        ]
+            {
+                'name': 'Intraday Algo',
+                'icon': 'fas fa-bolt',
+                'status': 'coming_soon',
+                'url_name': '',
+                'description': 'High-frequency intraday scalping. Multiple trades per day with quick profit booking.',
+            },
+       ]
     }
     return render(request, 'trading/strategies_list.html', context)
 
@@ -745,3 +765,23 @@ def coming_soon_placeholder(request):
 def connect_zerodha(request):
     messages.info(request, "Zerodha connection is now managed on the Broker page.")
     return redirect('broker')
+
+
+@login_required
+def public_pnl_overview(request):
+    return render(request, 'front/pnl.html')
+
+
+@login_required
+def public_algorithms(request):
+    return render(request, 'front/algo.html')
+
+
+@login_required
+def public_brokers(request):
+    return render(request, 'front/brok.html')
+
+
+@login_required
+def public_about(request):
+    return render(request, 'front/about.html')
