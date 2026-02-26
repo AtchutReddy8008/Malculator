@@ -1818,7 +1818,7 @@ class TradingApplication:
                     self.logger.error("Periodic manual close check failed", {"error": str(e)})
 
                 # ---- INSTRUMENT PRE-LOAD ----
-                if dtime(8, 55) <= current_time < dtime(14, 30):
+                if dtime(6, 55) <= current_time < dtime(10, 30):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         try:

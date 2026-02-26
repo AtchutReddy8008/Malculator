@@ -1,3 +1,4 @@
+
 # import os
 # import sys
 # import signal
@@ -11,13 +12,12 @@
 # from django.contrib.auth.models import User
 # from django.utils import timezone
 # from django.db import transaction, close_old_connections
-# from decimal import Decimal, InvalidOperation
+# from decimal import Decimal
 
 # from .models import Broker, BotStatus, LogEntry, Trade, DailyPnL
 # from .core.bot_original import TradingApplication
 # from .core.auth import generate_and_set_access_token_db
 # from kiteconnect import KiteConnect
-# from kiteconnect.exceptions import TokenException
 
 # logger = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@
 #         return
 
 #     logger.info(f"{user_prefix}[TASK START] run_user_bot task_id={task_id}")
+#     print(f"{user_prefix}[TASK START] launched at {timezone.now()} task_id={task_id}")
 
 #     runner = BotRunner()
 #     bot_status = None
@@ -118,11 +119,6 @@
 #         if not broker.access_token:
 #             raise ValueError("Missing broker access token")
 
-#         if broker.needs_reauth():
-#             logger.warning(f"{user_prefix}[{task_id}] Broker token is old — attempting refresh")
-#             kite = KiteConnect(api_key=broker.api_key)
-#             generate_and_set_access_token_db(kite=kite, broker=broker)
-
 #         logger.info(f"{user_prefix}[{task_id}] Broker loaded successfully")
 
 #         # Initialize trading engine (user-specific)
@@ -140,24 +136,17 @@
 #         ])
 #         logger.info(f"{user_prefix}[{task_id}] Initial heartbeat saved")
 
-#         # Main loop variables
-#         HEARTBEAT_INTERVAL = 10          # seconds — dashboard refresh rate
-#         REVOCATION_CHECK_INTERVAL = 5    # seconds
-#         CYCLE_WATCHDOG_TIMEOUT = 120     # seconds — alert if one cycle hangs
+#         # Main loop
+#         HEARTBEAT_INTERVAL = 5   # seconds — more responsive for dashboard
 #         last_heartbeat = time.time()
-#         last_revocation_check = time.time()
 #         last_db_cleanup = time.time()
 
 #         while runner.running:
-#             cycle_start = time.time()
-
-#             # Frequent revocation check
-#             if time.time() - last_revocation_check >= REVOCATION_CHECK_INTERVAL:
-#                 if getattr(self.request, 'revoked', False):
-#                     logger.warning(f"{user_prefix}[{task_id}] Task revoked externally — shutting down")
-#                     runner.stop()
-#                     raise Ignore()
-#                 last_revocation_check = time.time()
+#             # Celery revocation check
+#             if getattr(self.request, 'revoked', False):
+#                 logger.warning(f"{user_prefix}[{task_id}] Task revoked externally — shutting down")
+#                 runner.stop()
+#                 raise Ignore()
 
 #             # DB stop flag check
 #             bot_status.refresh_from_db()
@@ -166,30 +155,21 @@
 #                 runner.stop()
 #                 break
 
-#             # Prevent stale DB connections
-#             if time.time() - last_db_cleanup > 300:
+#             # Prevent stale DB connections in long-running task
+#             if time.time() - last_db_cleanup > 300:  # every 5 minutes
 #                 close_old_connections()
 #                 last_db_cleanup = time.time()
 
 #             try:
-#                 # Run ONE full bot cycle with timeout watchdog
+#                 # Run ONE full bot cycle
 #                 app.run()
-
-#                 cycle_duration = time.time() - cycle_start
-#                 if cycle_duration > CYCLE_WATCHDOG_TIMEOUT:
-#                     logger.warning(f"{user_prefix}[{task_id}] Cycle took {cycle_duration:.1f}s — possible hang?")
 
 #                 # Heartbeat update
 #                 if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
 #                     try:
-#                         pnl_value = app.engine.algo_pnl() or 0
-#                         margin_value = app.engine.actual_used_capital() or 0
-
-#                         # Safer Decimal conversion
-#                         bot_status.current_unrealized_pnl = Decimal(str(pnl_value)) if pnl_value else Decimal('0.00')
-#                         bot_status.current_margin = Decimal(str(margin_value)) if margin_value else Decimal('0.00')
 #                         bot_status.last_heartbeat = timezone.now()
-
+#                         bot_status.current_unrealized_pnl = Decimal(str(app.engine.algo_pnl() or 0))
+#                         bot_status.current_margin = Decimal(str(app.engine.actual_used_capital() or 0))
 #                         bot_status.save(update_fields=[
 #                             'last_heartbeat',
 #                             'current_unrealized_pnl',
@@ -197,17 +177,8 @@
 #                         ])
 #                         last_heartbeat = time.time()
 #                         logger.debug(f"{user_prefix}[{task_id}] Heartbeat updated")
-#                     except (InvalidOperation, ValueError) as conv_err:
-#                         logger.warning(f"{user_prefix}[{task_id}] Invalid PnL/margin value: {conv_err}")
 #                     except Exception as hb_err:
 #                         logger.warning(f"{user_prefix}[{task_id}] Heartbeat save failed: {hb_err}")
-
-#             except TokenException as te:
-#                 logger.critical(f"{user_prefix}[{task_id}] Zerodha token error: {te}")
-#                 bot_status.last_error = f"Token expired/invalid: {str(te)}"
-#                 bot_status.save(update_fields=['last_error'])
-#                 # Optional: sleep longer or trigger refresh task
-#                 time.sleep(30)
 
 #             except KeyboardInterrupt:
 #                 logger.info(f"{user_prefix}[{task_id}] KeyboardInterrupt — stopping")
@@ -225,7 +196,7 @@
 #                     bot_status.save(update_fields=['last_error'])
 #                 time.sleep(10)  # backoff
 
-#             time.sleep(1)  # Yield control
+#             time.sleep(1)  # Yield control to Celery
 
 #         logger.info(f"{user_prefix}[{task_id}] Main loop exited cleanly")
 
@@ -242,13 +213,14 @@
 #             bot_status.save()
 
 #     finally:
-#         # FINAL CLEANUP
+#         # FINAL CLEANUP (always runs)
 #         if bot_status:
 #             bot_status.is_running = False
 #             bot_status.last_stopped = timezone.now()
 #             bot_status.save(update_fields=['is_running', 'last_stopped'])
 
-#         if app and hasattr(app, 'engine') and app.engine.state.data.get("trade_active", False):
+#         # Ensure graceful exit of trading logic if still active
+#         if app and app.engine.state.data.get("trade_active", False):
 #             try:
 #                 logger.info(f"{user_prefix}[{task_id}] Final cleanup: forcing engine exit")
 #                 app.engine.exit("Task shutdown / Celery final cleanup")
@@ -264,30 +236,32 @@
 
 # @shared_task
 # def check_bot_health():
+#     """
+#     Periodic Celery Beat task to detect and clean up stale bot records.
+#     Runs every ~5 minutes (configure in celery beat schedule).
+#     """
 #     now = timezone.now()
 #     logger.info("[HEALTH CHECK] Starting bot health check")
 
-#     running_bots = BotStatus.objects.filter(is_running=True).select_related('user')
+#     running_bots = BotStatus.objects.filter(is_running=True)
 
 #     if not running_bots.exists():
 #         logger.info("[HEALTH CHECK] No bots currently marked as running")
 #         return
 
+#     logger.info(f"[HEALTH CHECK] Checking {running_bots.count()} running bots")
+
 #     for status in running_bots:
 #         issues = []
-#         broker = Broker.objects.filter(user=status.user, broker_name='ZERODHA').first()
 
-#         # Heartbeat stale
+#         # No heartbeat for >5 min → stale
 #         if status.last_heartbeat:
 #             age = now - status.last_heartbeat
 #             if age > timedelta(minutes=5):
 #                 issues.append(f"No heartbeat for {age.total_seconds()/60:.1f} min")
+#         # Started long ago but no heartbeat
 #         elif status.last_started and (now - status.last_started) > timedelta(minutes=30):
 #             issues.append("Long-running without heartbeat")
-
-#         # Token old/expired
-#         if broker and broker.needs_reauth():
-#             issues.append("Zerodha token needs re-auth (old/expired)")
 
 #         if issues:
 #             msg = "; ".join(issues)
@@ -302,51 +276,15 @@
 
 
 # # ==============================================================================
-# # PROACTIVE TOKEN REFRESH (DAILY ~5:45 AM IST)
-# # ==============================================================================
-
-# @shared_task
-# def refresh_expired_tokens():
-#     now = timezone.now()
-#     logger.info("[TOKEN REFRESH] Checking for near-expiry tokens")
-
-#     threshold = now - timedelta(hours=22)  # refresh if older than ~22 hours
-
-#     brokers = Broker.objects.filter(
-#         access_token__isnull=False,
-#         token_generated_at__lt=threshold,
-#         is_active=True
-#     ).select_related('user')
-
-#     refreshed = 0
-
-#     for broker in brokers:
-#         try:
-#             kite = KiteConnect(api_key=broker.api_key)
-#             success = generate_and_set_access_token_db(kite=kite, broker=broker)
-#             if success:
-#                 refreshed += 1
-#                 LogEntry.objects.create(
-#                     user=broker.user,
-#                     level='INFO',
-#                     message="Auto token refresh succeeded (pre-expiry)",
-#                     details={'broker_id': broker.id}
-#                 )
-#                 logger.info(f"Token refreshed for {broker.user.username}")
-#             else:
-#                 logger.warning(f"Auto refresh failed for {broker.user.username}")
-#         except Exception as e:
-#             logger.exception(f"Token refresh failed for broker {broker.id}")
-
-#     logger.info(f"[TOKEN REFRESH] Completed — refreshed {refreshed} tokens")
-
-
-# # ==============================================================================
 # # BACKGROUND ZERODHA TOKEN GENERATION TASK
 # # ==============================================================================
 
 # @shared_task
 # def generate_zerodha_token_task(broker_id):
+#     """
+#     Background task to generate and save Zerodha access token
+#     after user submits credentials.
+#     """
 #     try:
 #         broker = Broker.objects.select_related('user').get(id=broker_id)
 #         kite = KiteConnect(api_key=broker.api_key)
@@ -358,50 +296,58 @@
 #                 user=broker.user,
 #                 level='INFO',
 #                 message="Background Zerodha token generation succeeded",
-#                 details={'broker_id': broker_id}
+#                 details={'broker_id': broker_id, 'user_id': broker.user.id}
 #             )
-#             logger.info(f"Token generation succeeded for broker {broker_id}")
+#             logger.info(f"Token generation task succeeded for broker {broker_id}")
 #         else:
 #             LogEntry.objects.create(
 #                 user=broker.user,
 #                 level='ERROR',
 #                 message="Background Zerodha token generation failed",
-#                 details={'broker_id': broker_id}
+#                 details={'broker_id': broker_id, 'user_id': broker.user.id}
 #             )
-#             logger.error(f"Token generation failed for broker {broker_id}")
+#             logger.error(f"Token generation task failed for broker {broker_id}")
 
 #     except Broker.DoesNotExist:
-#         logger.error(f"Broker {broker_id} not found for token generation")
+#         logger.error(f"Broker {broker_id} not found for token generation task")
 #     except Exception as e:
 #         logger.exception(f"Token generation task failed: {str(e)}")
 
 
 # # ==============================================================================
-# # AUTO-START BOTS AT MARKET OPEN (~09:05 IST)
+# # AUTO-START BOTS AT MARKET OPEN (09:00 IST)
 # # ==============================================================================
 
 # @shared_task
 # def auto_start_user_bots():
+#     """
+#     Celery Beat task — runs daily at 09:00 IST
+#     Automatically starts bots for users who have active Zerodha connection
+#     but bot is not currently running.
+#     """
 #     logger.info("[AUTO-START] Checking users for morning bot auto-start")
 
-#     # Only consider users with auto-start preference (add this field later if needed)
-#     # For now: all with valid broker
-#     brokers = Broker.objects.filter(
-#         broker_name='ZERODHA',
-#         is_active=True,
-#         access_token__isnull=False
-#     ).select_related('user')
-
+#     users = User.objects.filter(is_active=True)
 #     started_count = 0
 
-#     for broker in brokers:
-#         user = broker.user
+#     for user in users:
 #         try:
+#             broker = Broker.objects.filter(
+#                 user=user,
+#                 broker_name='ZERODHA',
+#                 is_active=True,
+#                 access_token__isnull=False
+#             ).first()
+
+#             if not broker:
+#                 continue
+
 #             bot_status, _ = BotStatus.objects.get_or_create(user=user)
 
 #             if bot_status.is_running:
-#                 continue
+#                 continue  # already running → skip
 
+#             # Launch the bot task
 #             result = run_user_bot.delay(user.id)
 
 #             with transaction.atomic():
@@ -420,11 +366,11 @@
 #             LogEntry.objects.create(
 #                 user=user,
 #                 level='INFO',
-#                 message='Bot auto-started at market open (09:05 IST)',
+#                 message='Bot auto-started at market open (09:00 IST)',
 #                 details={'task_id': result.id, 'auto': True}
 #             )
 
-#             logger.info(f"[AUTO-START] Bot launched for {user.username}")
+#             logger.info(f"[AUTO-START] Bot launched for {user.username} - task_id={result.id}")
 #             started_count += 1
 
 #         except Exception as e:
@@ -434,77 +380,98 @@
 
 
 # # ==============================================================================
-# # DAILY PnL SNAPSHOT (~15:50 IST)
+# # DAILY PnL SAVE FOR ALL USERS (15:45 IST)
+# # Ensures calendar always has data — even no trade / bot not running
 # # ==============================================================================
 
 # @shared_task
 # def save_daily_pnl_all_users():
+#     """
+#     Celery Beat task — runs daily at ~15:45 IST
+#     Creates/updates DailyPnL record for every active user with broker,
+#     ensuring calendar view always has data (even PnL=0 days).
+#     """
 #     today = date.today()
-#     logger.info(f"[DAILY PnL] Running for date: {today}")
+#     logger.info(f"[DAILY PnL SAVE] Running for date: {today}")
 
-#     users_with_broker = User.objects.filter(
-#         brokers__broker_name='ZERODHA',
-#         brokers__is_active=True,
-#         brokers__access_token__isnull=False
-#     ).distinct()
-
+#     users = User.objects.filter(is_active=True)
 #     saved_count = 0
+#     skipped_count = 0
 
-#     for user in users_with_broker:
+#     for user in users:
 #         try:
+#             broker = Broker.objects.filter(
+#                 user=user,
+#                 broker_name='ZERODHA',
+#                 is_active=True
+#             ).first()
+
+#             if not broker:
+#                 skipped_count += 1
+#                 continue  # no active broker → skip
+
 #             bot_status = BotStatus.objects.filter(user=user).first()
 
-#             # Prefer realized PnL from trades (more accurate for EOD)
+#             pnl = Decimal('0.00')
+#             total_trades = 0
+#             win_trades = 0
+#             loss_trades = 0
+
+#             # Prefer live bot data if running
+#             if bot_status and bot_status.is_running:
+#                 pnl = bot_status.current_unrealized_pnl or Decimal('0.00')
+
+#             # Count executed trades today (more reliable than bot state)
 #             trades_today = Trade.objects.filter(
 #                 user=user,
 #                 entry_time__date=today,
 #                 status='EXECUTED'
 #             )
-#             realized_pnl = trades_today.aggregate(total=Sum('pnl'))['total'] or Decimal('0.00')
 #             total_trades = trades_today.count()
 #             win_trades = trades_today.filter(pnl__gt=0).count()
-
-#             # If bot is still running and has unrealized, we can blend or log warning
-#             if bot_status and bot_status.is_running and bot_status.current_unrealized_pnl != 0:
-#                 logger.info(f"[DAILY PnL] {user.username} has open unrealized PnL — using realized only")
+#             loss_trades = trades_today.filter(pnl__lt=0).count()
 
 #             DailyPnL.objects.update_or_create(
 #                 user=user,
 #                 date=today,
 #                 defaults={
-#                     'pnl': realized_pnl,
+#                     'pnl': pnl,
 #                     'total_trades': total_trades,
 #                     'win_trades': win_trades,
-#                     'loss_trades': total_trades - win_trades,
+#                     'loss_trades': loss_trades,
 #                 }
 #             )
 
+#             logger.debug(f"[DAILY PnL] Saved for {user.username}: ₹{pnl:.2f}, trades={total_trades}")
 #             saved_count += 1
-#             logger.debug(f"[DAILY PnL] Saved for {user.username}: ₹{realized_pnl:.2f}")
 
 #         except Exception as e:
 #             logger.error(f"[DAILY PnL] Failed for {user.username}: {str(e)}")
+#             skipped_count += 1
 
-#     logger.info(f"[DAILY PnL] Completed — saved {saved_count} records")
+#     logger.info(f"[DAILY PnL SAVE] Completed — saved: {saved_count}, skipped: {skipped_count}")
 
 
 # # ==============================================================================
-# # WEEKLY LOG CLEANUP (SUNDAY 02:30 IST)
+# # WEEKLY LOG CLEANUP (EVERY SUNDAY 2:30 AM IST)
 # # ==============================================================================
 
 # @shared_task(name='trading.cleanup_old_logs')
 # def cleanup_old_logs(days=30):
+#     """
+#     Weekly cleanup task (runs every Sunday at 2:30 AM IST)
+#     Deletes INFO and WARNING logs older than `days` days.
+#     Keeps ERROR and CRITICAL logs forever.
+#     """
 #     cutoff = timezone.now() - timedelta(days=days)
 
 #     deleted_count = LogEntry.objects.filter(
 #         level__in=['INFO', 'WARNING'],
 #         timestamp__lt=cutoff
-#     ).delete()[0]
+#     ).delete()[0]   # returns (count, dict of deleted objects)
 
 #     logger.info(f"[WEEKLY CLEANUP] Deleted {deleted_count} old INFO/WARNING logs older than {days} days")
 #     return f"Deleted {deleted_count} old INFO/WARNING logs older than {days} days."
-# trading/tasks.py
-
 import os
 import sys
 import signal
@@ -535,10 +502,6 @@ _signals_registered = False
 
 
 def register_shutdown_signals():
-    """
-    Register shutdown handlers once per Celery worker process.
-    Safe even with gevent/prefork + --noreload.
-    """
     global _signals_registered
     if _signals_registered:
         return
@@ -549,26 +512,10 @@ def register_shutdown_signals():
 
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
-
     _signals_registered = True
 
 
-# Register signals at module import (once per worker)
 register_shutdown_signals()
-
-
-# ==============================================================================
-# HELPER CONTROL CLASS
-# ==============================================================================
-
-class BotRunner:
-    """Simple per-task control object for graceful shutdown"""
-
-    def __init__(self):
-        self.running = True
-
-    def stop(self):
-        self.running = False
 
 
 # ==============================================================================
@@ -579,7 +526,18 @@ class BotRunner:
 def run_user_bot(self, user_id):
     """
     Long-running Celery task that runs a trading bot for ONE specific user.
-    Supports multiple users simultaneously — each user gets their own independent task.
+
+    FIX: The old code called app.run() inside a while loop. But app.run()
+    contains its OWN infinite while loop — so the outer loop in tasks.py never
+    iterated, meaning the tasks.py heartbeat never fired. Then check_bot_health()
+    saw no heartbeat for 5+ minutes, set is_running=False, and bot_original.py's
+    _check_is_running() stopped the bot.
+
+    The correct architecture is:
+      - bot_original.py owns the main loop (app.run())
+      - tasks.py just bootstraps, calls app.run() ONCE, and cleans up after
+      - heartbeat is handled INSIDE bot_original.py's run() loop (already there)
+      - check_bot_health threshold raised to 15 min to survive restarts safely
     """
     task_id = self.request.id
 
@@ -591,28 +549,33 @@ def run_user_bot(self, user_id):
         return
 
     logger.info(f"{user_prefix}[TASK START] run_user_bot task_id={task_id}")
-    print(f"{user_prefix}[TASK START] launched at {timezone.now()} task_id={task_id}")
+    print(f"{user_prefix}[TASK START] launched at {timezone.now()} task_id={task_id}", flush=True)
 
-    runner = BotRunner()
     bot_status = None
-    app = None  # TradingApplication instance
+    app = None
 
     try:
-        # Initialize / update BotStatus
+        # ── 1. Mark bot as running in DB ──────────────────────────────────────
         bot_status, created = BotStatus.objects.get_or_create(user=user)
         bot_status.celery_task_id = task_id
         bot_status.is_running = True
         bot_status.last_started = timezone.now()
-        bot_status.last_error = None
+        bot_status.last_heartbeat = timezone.now()   # FIX: set immediately so health check
+        bot_status.last_error = None                 #      doesn't kill us before app.run() starts
+        bot_status.current_unrealized_pnl = Decimal('0.00')
+        bot_status.current_margin = Decimal('0.00')
         bot_status.save(update_fields=[
             'celery_task_id',
             'is_running',
             'last_started',
-            'last_error'
+            'last_heartbeat',
+            'last_error',
+            'current_unrealized_pnl',
+            'current_margin',
         ])
-        logger.info(f"{user_prefix}[{task_id}] BotStatus {'created' if created else 'updated'}")
+        logger.info(f"{user_prefix}[{task_id}] BotStatus {'created' if created else 'updated'} — is_running=True")
 
-        # Load broker
+        # ── 2. Load broker ────────────────────────────────────────────────────
         broker = Broker.objects.filter(
             user=user,
             broker_name="ZERODHA",
@@ -621,119 +584,78 @@ def run_user_bot(self, user_id):
 
         if not broker:
             raise ValueError("No active Zerodha broker found")
-
         if not broker.access_token:
             raise ValueError("Missing broker access token")
 
         logger.info(f"{user_prefix}[{task_id}] Broker loaded successfully")
 
-        # Initialize trading engine (user-specific)
+        # ── 3. Initialize trading engine ──────────────────────────────────────
         app = TradingApplication(user=user, broker=broker)
-        logger.info(f"{user_prefix}[{task_id}] TradingApplication initialized")
+        logger.info(f"{user_prefix}[{task_id}] TradingApplication initialized — handing control to app.run()")
 
-        # Initial heartbeat
-        bot_status.last_heartbeat = timezone.now()
-        bot_status.current_unrealized_pnl = Decimal('0.00')
-        bot_status.current_margin = Decimal('0.00')
-        bot_status.save(update_fields=[
-            'last_heartbeat',
-            'current_unrealized_pnl',
-            'current_margin'
-        ])
-        logger.info(f"{user_prefix}[{task_id}] Initial heartbeat saved")
+        # ── 4. Run the bot ────────────────────────────────────────────────────
+        #
+        # FIX: Call app.run() exactly ONCE. It contains its own while loop that:
+        #   - checks is_running from DB every iteration
+        #   - writes heartbeat + unrealized PnL every 5 seconds
+        #   - handles entry, exit, adjustments, VIX checks, etc.
+        #
+        # There must be NO outer while loop here. Adding one caused the old bug
+        # where tasks.py's heartbeat was unreachable and check_bot_health() killed
+        # the bot after 5 minutes of perceived silence.
+        #
+        app.run()
 
-        # Main loop
-        HEARTBEAT_INTERVAL = 5   # seconds — more responsive for dashboard
-        last_heartbeat = time.time()
-        last_db_cleanup = time.time()
+        logger.info(f"{user_prefix}[{task_id}] app.run() returned cleanly")
 
-        while runner.running:
-            # Celery revocation check
-            if getattr(self.request, 'revoked', False):
-                logger.warning(f"{user_prefix}[{task_id}] Task revoked externally — shutting down")
-                runner.stop()
-                raise Ignore()
+    except ValueError as cfg_err:
+        # Config errors (missing broker, token) — log clearly, don't retry
+        logger.error(f"{user_prefix}[{task_id}] Config error: {cfg_err}")
+        if bot_status:
+            bot_status.last_error = str(cfg_err)[:500]
+            bot_status.is_running = False
+            bot_status.last_stopped = timezone.now()
+            bot_status.save(update_fields=['last_error', 'is_running', 'last_stopped'])
 
-            # DB stop flag check
-            bot_status.refresh_from_db()
-            if not bot_status.is_running:
-                logger.info(f"{user_prefix}[{task_id}] BotStatus.is_running=False — stopping gracefully")
-                runner.stop()
-                break
-
-            # Prevent stale DB connections in long-running task
-            if time.time() - last_db_cleanup > 300:  # every 5 minutes
-                close_old_connections()
-                last_db_cleanup = time.time()
-
+    except SoftTimeLimitExceeded:
+        # Should never fire (soft_time_limit=None), but handled for safety
+        logger.warning(f"{user_prefix}[{task_id}] SoftTimeLimitExceeded — stopping")
+        if app and app.engine.state.data.get("trade_active"):
             try:
-                # Run ONE full bot cycle
-                app.run()
+                app.engine.exit("Celery soft time limit")
+            except Exception:
+                pass
 
-                # Heartbeat update
-                if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
-                    try:
-                        bot_status.last_heartbeat = timezone.now()
-                        bot_status.current_unrealized_pnl = Decimal(str(app.engine.algo_pnl() or 0))
-                        bot_status.current_margin = Decimal(str(app.engine.actual_used_capital() or 0))
-                        bot_status.save(update_fields=[
-                            'last_heartbeat',
-                            'current_unrealized_pnl',
-                            'current_margin'
-                        ])
-                        last_heartbeat = time.time()
-                        logger.debug(f"{user_prefix}[{task_id}] Heartbeat updated")
-                    except Exception as hb_err:
-                        logger.warning(f"{user_prefix}[{task_id}] Heartbeat save failed: {hb_err}")
-
-            except KeyboardInterrupt:
-                logger.info(f"{user_prefix}[{task_id}] KeyboardInterrupt — stopping")
-                runner.stop()
-
-            except SoftTimeLimitExceeded:
-                logger.warning(f"{user_prefix}[{task_id}] Soft time limit exceeded — stopping")
-                break
-
-            except Exception as loop_err:
-                error_msg = f"Error in bot loop: {str(loop_err)}\n{traceback.format_exc()}"
-                logger.error(f"{user_prefix}[{task_id}] {error_msg}")
-                if bot_status:
-                    bot_status.last_error = str(loop_err)[:500]
-                    bot_status.save(update_fields=['last_error'])
-                time.sleep(10)  # backoff
-
-            time.sleep(1)  # Yield control to Celery
-
-        logger.info(f"{user_prefix}[{task_id}] Main loop exited cleanly")
-
-    except User.DoesNotExist:
-        logger.error(f"[TASK START] User id={user_id} not found — task aborted")
     except Exception as fatal_err:
         error_msg = f"Fatal error: {str(fatal_err)}\n{traceback.format_exc()}"
         logger.critical(f"{user_prefix}[{task_id}] {error_msg}")
-
         if bot_status:
             bot_status.last_error = str(fatal_err)[:500]
             bot_status.is_running = False
             bot_status.last_stopped = timezone.now()
-            bot_status.save()
+            bot_status.save(update_fields=['last_error', 'is_running', 'last_stopped'])
 
     finally:
-        # FINAL CLEANUP (always runs)
+        # Always mark bot as stopped when this task ends for any reason
         if bot_status:
-            bot_status.is_running = False
-            bot_status.last_stopped = timezone.now()
-            bot_status.save(update_fields=['is_running', 'last_stopped'])
+            try:
+                bot_status.refresh_from_db()
+                bot_status.is_running = False
+                bot_status.last_stopped = timezone.now()
+                bot_status.save(update_fields=['is_running', 'last_stopped'])
+                logger.info(f"{user_prefix}[{task_id}] Final cleanup: is_running=False saved")
+            except Exception as cleanup_err:
+                logger.error(f"{user_prefix}[{task_id}] Final cleanup DB save failed: {cleanup_err}")
 
-        # Ensure graceful exit of trading logic if still active
+        # Safety net: exit any lingering trade position
         if app and app.engine.state.data.get("trade_active", False):
             try:
                 logger.info(f"{user_prefix}[{task_id}] Final cleanup: forcing engine exit")
                 app.engine.exit("Task shutdown / Celery final cleanup")
             except Exception as exit_err:
-                logger.critical(f"Final engine exit failed: {str(exit_err)}")
+                logger.critical(f"{user_prefix}[{task_id}] Final engine exit failed: {exit_err}")
 
-        logger.info(f"{user_prefix}[{task_id}] Task cleanup complete — bot marked stopped")
+        logger.info(f"{user_prefix}[{task_id}] Task complete — bot marked stopped")
 
 
 # ==============================================================================
@@ -743,11 +665,16 @@ def run_user_bot(self, user_id):
 @shared_task
 def check_bot_health():
     """
-    Periodic Celery Beat task to detect and clean up stale bot records.
-    Runs every ~5 minutes (configure in celery beat schedule).
+    Detects and cleans up stale bot records.
+
+    FIX: Threshold raised from 5 min → 15 min.
+    bot_original.py writes a heartbeat every 5 seconds, but during startup
+    (instrument loading, token auth, banner) it can take 2-4 minutes before
+    the first heartbeat lands. 5 minutes was too tight and caused false kills.
     """
     now = timezone.now()
-    logger.info("[HEALTH CHECK] Starting bot health check")
+    STALE_THRESHOLD_MINUTES = 15   # FIX: was 5, raised to 15
+    logger.info(f"[HEALTH CHECK] Running — stale threshold: {STALE_THRESHOLD_MINUTES} min")
 
     running_bots = BotStatus.objects.filter(is_running=True)
 
@@ -760,23 +687,21 @@ def check_bot_health():
     for status in running_bots:
         issues = []
 
-        # No heartbeat for >5 min → stale
         if status.last_heartbeat:
             age = now - status.last_heartbeat
-            if age > timedelta(minutes=5):
+            if age > timedelta(minutes=STALE_THRESHOLD_MINUTES):
                 issues.append(f"No heartbeat for {age.total_seconds()/60:.1f} min")
-        # Started long ago but no heartbeat
         elif status.last_started and (now - status.last_started) > timedelta(minutes=30):
-            issues.append("Long-running without heartbeat")
+            issues.append("Long-running without any heartbeat ever")
 
         if issues:
             msg = "; ".join(issues)
-            logger.warning(f"[HEALTH CHECK] Stale bot detected: {status.user.username} - {msg}")
+            logger.warning(f"[HEALTH CHECK] Stale bot: {status.user.username} — {msg}")
             status.is_running = False
-            status.last_error = f"Stale bot - {msg}"
+            status.last_error = f"Auto-stopped: {msg}"
             status.save(update_fields=['is_running', 'last_error'])
         else:
-            logger.debug(f"[HEALTH CHECK] Bot {status.user.username} looks healthy")
+            logger.debug(f"[HEALTH CHECK] Bot {status.user.username} is healthy")
 
     logger.info("[HEALTH CHECK] Completed")
 
@@ -787,32 +712,20 @@ def check_bot_health():
 
 @shared_task
 def generate_zerodha_token_task(broker_id):
-    """
-    Background task to generate and save Zerodha access token
-    after user submits credentials.
-    """
     try:
         broker = Broker.objects.select_related('user').get(id=broker_id)
         kite = KiteConnect(api_key=broker.api_key)
-
         success = generate_and_set_access_token_db(kite=kite, broker=broker)
 
-        if success:
-            LogEntry.objects.create(
-                user=broker.user,
-                level='INFO',
-                message="Background Zerodha token generation succeeded",
-                details={'broker_id': broker_id, 'user_id': broker.user.id}
-            )
-            logger.info(f"Token generation task succeeded for broker {broker_id}")
-        else:
-            LogEntry.objects.create(
-                user=broker.user,
-                level='ERROR',
-                message="Background Zerodha token generation failed",
-                details={'broker_id': broker_id, 'user_id': broker.user.id}
-            )
-            logger.error(f"Token generation task failed for broker {broker_id}")
+        level = 'INFO' if success else 'ERROR'
+        msg = "Background Zerodha token generation " + ("succeeded" if success else "failed")
+        LogEntry.objects.create(
+            user=broker.user,
+            level=level,
+            message=msg,
+            details={'broker_id': broker_id, 'user_id': broker.user.id}
+        )
+        logger.info(f"Token generation task {'succeeded' if success else 'failed'} for broker {broker_id}")
 
     except Broker.DoesNotExist:
         logger.error(f"Broker {broker_id} not found for token generation task")
@@ -826,13 +739,7 @@ def generate_zerodha_token_task(broker_id):
 
 @shared_task
 def auto_start_user_bots():
-    """
-    Celery Beat task — runs daily at 09:00 IST
-    Automatically starts bots for users who have active Zerodha connection
-    but bot is not currently running.
-    """
     logger.info("[AUTO-START] Checking users for morning bot auto-start")
-
     users = User.objects.filter(is_active=True)
     started_count = 0
 
@@ -849,11 +756,9 @@ def auto_start_user_bots():
                 continue
 
             bot_status, _ = BotStatus.objects.get_or_create(user=user)
-
             if bot_status.is_running:
-                continue  # already running → skip
+                continue
 
-            # Launch the bot task
             result = run_user_bot.delay(user.id)
 
             with transaction.atomic():
@@ -863,10 +768,7 @@ def auto_start_user_bots():
                 bot_status.last_started = timezone.now()
                 bot_status.last_error = None
                 bot_status.save(update_fields=[
-                    'is_running',
-                    'celery_task_id',
-                    'last_started',
-                    'last_error'
+                    'is_running', 'celery_task_id', 'last_started', 'last_error'
                 ])
 
             LogEntry.objects.create(
@@ -875,7 +777,6 @@ def auto_start_user_bots():
                 message='Bot auto-started at market open (09:00 IST)',
                 details={'task_id': result.id, 'auto': True}
             )
-
             logger.info(f"[AUTO-START] Bot launched for {user.username} - task_id={result.id}")
             started_count += 1
 
@@ -887,51 +788,33 @@ def auto_start_user_bots():
 
 # ==============================================================================
 # DAILY PnL SAVE FOR ALL USERS (15:45 IST)
-# Ensures calendar always has data — even no trade / bot not running
 # ==============================================================================
 
 @shared_task
 def save_daily_pnl_all_users():
-    """
-    Celery Beat task — runs daily at ~15:45 IST
-    Creates/updates DailyPnL record for every active user with broker,
-    ensuring calendar view always has data (even PnL=0 days).
-    """
     today = date.today()
     logger.info(f"[DAILY PnL SAVE] Running for date: {today}")
-
     users = User.objects.filter(is_active=True)
-    saved_count = 0
-    skipped_count = 0
+    saved_count = skipped_count = 0
 
     for user in users:
         try:
             broker = Broker.objects.filter(
-                user=user,
-                broker_name='ZERODHA',
-                is_active=True
+                user=user, broker_name='ZERODHA', is_active=True
             ).first()
 
             if not broker:
                 skipped_count += 1
-                continue  # no active broker → skip
+                continue
 
             bot_status = BotStatus.objects.filter(user=user).first()
-
             pnl = Decimal('0.00')
-            total_trades = 0
-            win_trades = 0
-            loss_trades = 0
 
-            # Prefer live bot data if running
             if bot_status and bot_status.is_running:
                 pnl = bot_status.current_unrealized_pnl or Decimal('0.00')
 
-            # Count executed trades today (more reliable than bot state)
             trades_today = Trade.objects.filter(
-                user=user,
-                entry_time__date=today,
-                status='EXECUTED'
+                user=user, entry_time__date=today, status='EXECUTED'
             )
             total_trades = trades_today.count()
             win_trades = trades_today.filter(pnl__gt=0).count()
@@ -947,8 +830,6 @@ def save_daily_pnl_all_users():
                     'loss_trades': loss_trades,
                 }
             )
-
-            logger.debug(f"[DAILY PnL] Saved for {user.username}: ₹{pnl:.2f}, trades={total_trades}")
             saved_count += 1
 
         except Exception as e:
@@ -964,17 +845,10 @@ def save_daily_pnl_all_users():
 
 @shared_task(name='trading.cleanup_old_logs')
 def cleanup_old_logs(days=30):
-    """
-    Weekly cleanup task (runs every Sunday at 2:30 AM IST)
-    Deletes INFO and WARNING logs older than `days` days.
-    Keeps ERROR and CRITICAL logs forever.
-    """
     cutoff = timezone.now() - timedelta(days=days)
-
     deleted_count = LogEntry.objects.filter(
         level__in=['INFO', 'WARNING'],
         timestamp__lt=cutoff
-    ).delete()[0]   # returns (count, dict of deleted objects)
-
-    logger.info(f"[WEEKLY CLEANUP] Deleted {deleted_count} old INFO/WARNING logs older than {days} days")
-    return f"Deleted {deleted_count} old INFO/WARNING logs older than {days} days."
+    ).delete()[0]
+    logger.info(f"[WEEKLY CLEANUP] Deleted {deleted_count} old logs older than {days} days")
+    return f"Deleted {deleted_count} old INFO/WARNING logs."
