@@ -36,20 +36,15 @@ from kiteconnect import KiteConnect
 from django.contrib.auth.forms import AuthenticationForm
 
 
-# ───────────────────────────────────────────────
-# Combined Auth View (Login + Signup on single page)
-# ───────────────────────────────────────────────
 class AuthView(View):
-    template_name = 'trading/auth_combined.html'  # Make sure this file exists!
+    template_name = 'trading/auth_combined.html'
     login_form_class = AuthenticationForm
     signup_form_class = SignUpForm
 
     def get(self, request):
-        mode = request.GET.get('mode', 'login')  # default to login tab
-
+        mode = request.GET.get('mode', 'login')
         login_form = self.login_form_class()
         signup_form = self.signup_form_class()
-
         context = {
             'login_form': login_form,
             'signup_form': signup_form,
@@ -59,7 +54,6 @@ class AuthView(View):
 
     def post(self, request):
         mode = request.POST.get('form_type', 'login')
-
         if mode == 'login':
             form = self.login_form_class(data=request.POST)
             if form.is_valid():
@@ -69,13 +63,11 @@ class AuthView(View):
                 return redirect('dashboard')
             else:
                 messages.error(request, "Invalid credentials. Please check and try again.")
-        else:  # signup
+        else:
             form = self.signup_form_class(request.POST)
             if form.is_valid():
                 user = form.save()
-                # Auto-login immediately after signup
                 login(request, user)
-                # Ensure BotStatus exists for the new user
                 BotStatus.objects.get_or_create(user=user)
                 messages.success(request, "Account created successfully! Welcome to your dashboard.")
                 return redirect('dashboard')
@@ -83,10 +75,8 @@ class AuthView(View):
                 messages.error(request, "Please correct the errors below.")
                 print("Signup form errors:", form.errors)
 
-        # If form invalid → re-render with the active tab preserved
         login_form = self.login_form_class() if mode != 'login' else form
         signup_form = self.signup_form_class() if mode != 'signup' else form
-
         context = {
             'login_form': login_form,
             'signup_form': signup_form,
@@ -98,7 +88,6 @@ class AuthView(View):
 def home(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
-
     context = {
         'total_users': User.objects.count(),
         'total_trades': Trade.objects.count(),
@@ -111,16 +100,11 @@ def home(request):
 def dashboard(request):
     try:
         bot_status, _ = BotStatus.objects.get_or_create(user=request.user)
-
         recent_trades = Trade.objects.filter(user=request.user).order_by('-entry_time')[:10]
-
         stats = get_user_stats(request.user)
-
         today_pnl = DailyPnL.objects.filter(user=request.user, date=date.today()).first()
-
         broker = Broker.objects.filter(user=request.user, broker_name='ZERODHA').first()
         broker_ready = broker and bool(broker.access_token)
-
         overall_win_rate = calculate_overall_day_win_rate(request.user)
 
         if today_pnl and today_pnl.total_trades > 0:
@@ -160,7 +144,7 @@ def dashboard(request):
             'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
             'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
             'current_margin': float(bot_status.current_margin or 0),
-            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
+            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 1,
             'performance': performance,
         }
         return render(request, 'trading/dashboard.html', context)
@@ -202,13 +186,17 @@ def dashboard_stats(request):
     if bot_status:
         if bot_status.last_heartbeat:
             delta = now - bot_status.last_heartbeat
-            data['last_heartbeat_ago'] = f"{delta.total_seconds() // 60:.0f} min ago"
+            seconds = delta.total_seconds()
+            if seconds < 60:
+                data['last_heartbeat_ago'] = f"{int(seconds)}s ago"
+            else:
+                data['last_heartbeat_ago'] = f"{seconds // 60:.0f} min ago"
 
-        cached_pnl = float(bot_status.current_unrealized_pnl or 0)
-        data['current_unrealized_pnl'] = cached_pnl
+        data['current_unrealized_pnl'] = float(bot_status.current_unrealized_pnl or 0)
         data['current_margin'] = float(bot_status.current_margin or 0)
         data['daily_target'] = float(bot_status.daily_profit_target or 0)
         data['daily_stop_loss'] = float(bot_status.daily_stop_loss or 0)
+        data['max_lots_hard_cap'] = bot_status.max_lots_hard_cap or 1
 
     today_pnl = DailyPnL.objects.filter(user=user, date=date.today()).first()
     if today_pnl:
@@ -277,7 +265,6 @@ def broker_page(request):
         form = ZerodhaConnectionForm(instance=broker)
 
     brokers = Broker.objects.filter(user=request.user).order_by('-updated_at')
-
     context = {
         'form': form,
         'brokers': brokers,
@@ -303,7 +290,6 @@ def pnl_calendar(request):
         messages.warning(request, "Invalid year/month parameter — showing current month.")
 
     calendar_grid = monthcalendar(year, month)
-
     month_start = date(year, month, 1)
     if month == 12:
         month_end = date(year + 1, 1, 1) - timedelta(days=1)
@@ -373,7 +359,6 @@ def pnl_calendar(request):
         'current_month_str': date(year, month, 1).strftime('%B %Y'),
         'bot_running': bot_status.is_running if bot_status else False,
     }
-
     return render(request, 'trading/pnl_calendar.html', context)
 
 
@@ -388,7 +373,7 @@ def algorithms_page(request):
             'description': 'NIFTY Weekly Options Trading Strategy',
             'underlying': 'NIFTY 50',
             'lot_size': 65,
-            'entry_window': '09:21:00 - 09:26:00 IST',
+            'entry_window': '09:21:00 - 09:22:30 IST',
             'exit_time': '15:00:00 IST',
             'max_lots': 50,
             'strategy_type': 'Options Selling with Hedges',
@@ -398,11 +383,11 @@ def algorithms_page(request):
         }
 
         strategy_rules = [
-            'No trading on Tuesdays (optional)',
+            'No trading on Tuesdays',
             'No trading on expiry day',
-            'Entry only in widened window 9:21–9:26',
-            'VIX advisory range 6–35',
-            'Daily target: 2% of margin',
+            'Entry only in window 9:21–9:22:30',
+            'VIX range 9–22',
+            'Daily target: Net credit ÷ days (low VIX) or 2% of margin (high VIX)',
             'Stop loss: Equal to daily target',
             'Defensive adjustments at 50 points from short strike',
             'Max 1 adjustment per side per day',
@@ -437,12 +422,11 @@ def algorithms_page(request):
             'daily_stop_loss': float(bot_status.daily_stop_loss or 0),
             'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0),
             'current_margin': float(bot_status.current_margin or 0),
-            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0,
+            'max_lots_hard_cap': bot_status.max_lots_hard_cap or 1,
             'broker_ready': broker_ready,
             'broker': broker,
             'can_control_bot': request.user.is_staff,
         }
-
         return render(request, 'trading/algorithms.html', context)
 
     except Exception as e:
@@ -464,7 +448,6 @@ def get_user_stats(user):
     today = date.today()
     week_ago = today - timedelta(days=7)
     month_start = date(today.year, today.month, 1)
-
     return {
         'daily_pnl': DailyPnL.objects.filter(user=user, date=today).first(),
         'weekly_pnl': DailyPnL.objects.filter(user=user, date__gte=week_ago).aggregate(total=Sum('pnl'))['total'] or 0,
@@ -495,7 +478,6 @@ def get_current_streak(user, streak_type='win'):
     streak = 0
     current = date.today()
     sign = 1 if streak_type == 'win' else -1
-
     while True:
         record = DailyPnL.objects.filter(user=user, date=current).first()
         if not record or record.pnl == 0:
@@ -539,16 +521,15 @@ def start_bot(request):
                     'message': 'Bot already running (race condition prevented).'
                 }, status=409)
 
-            # Launch task - let the TASK set is_running=True
             result = run_user_bot.delay(user.id)
 
-            # Only save task ID and timestamps - do NOT set is_running here
+            # Only save task ID — do NOT set is_running here.
+            # The bot task sets is_running=True itself after it starts,
+            # so the DB is the authoritative source and there's no race.
             bot_status.celery_task_id = result.id
             bot_status.last_started = timezone.now()
             bot_status.last_error = None
-            bot_status.save(update_fields=[
-                'celery_task_id', 'last_started', 'last_error'
-            ])
+            bot_status.save(update_fields=['celery_task_id', 'last_started', 'last_error'])
 
         LogEntry.objects.create(
             user=user,
@@ -567,18 +548,13 @@ def start_bot(request):
         error_msg = f'Failed to start bot: {str(e)}'
         bot_status.last_error = error_msg[:500]
         bot_status.save(update_fields=['last_error'])
-
         LogEntry.objects.create(
             user=user,
             level='ERROR',
             message=error_msg,
             details={'action': 'start_bot_failed', 'trace': traceback.format_exc()[:1000]}
         )
-
-        return JsonResponse({
-            'success': False,
-            'message': error_msg
-        }, status=500)
+        return JsonResponse({'success': False, 'message': error_msg}, status=500)
 
 
 @login_required
@@ -594,13 +570,27 @@ def stop_bot(request):
             'message': 'Bot is not running.'
         }, status=400)
 
+    # STEP 1 — Signal the bot to stop gracefully by setting is_running=False.
+    # The bot's _check_is_running() loop reads this every second and will call
+    # exit() to close all open positions before shutting down.
+    # This is the PRIMARY stop mechanism.
+    with transaction.atomic():
+        bot_status.refresh_from_db()
+        bot_status.is_running = False
+        bot_status.last_stopped = timezone.now()
+        bot_status.save(update_fields=['is_running', 'last_stopped'])
+
+    # STEP 2 — Also send SIGTERM to the Celery task as a safety backstop.
+    # This fires AFTER the DB flag is set, so the bot has already been told
+    # to stop cleanly. SIGTERM gives the process a chance to handle shutdown.
+    # We do NOT use terminate=True with SIGKILL — that would kill it instantly
+    # without running exit() and leave open positions.
     revoked = False
     if bot_status.celery_task_id:
         try:
             celery_app.control.revoke(
                 bot_status.celery_task_id,
-                terminate=True,
-                signal='SIGTERM'
+                terminate=False,   # ← do NOT force-kill; DB flag is the real stop
             )
             revoked = True
         except Exception as e:
@@ -610,53 +600,59 @@ def stop_bot(request):
                 message=f'Failed to revoke task {bot_status.celery_task_id}: {str(e)}'
             )
 
-    with transaction.atomic():
-        bot_status.refresh_from_db()
-        bot_status.is_running = False
-        bot_status.celery_task_id = None
-        bot_status.last_stopped = timezone.now()
-        bot_status.save(update_fields=['is_running', 'celery_task_id', 'last_stopped'])
-
     LogEntry.objects.create(
         user=user,
         level='INFO',
-        message='Bot stopped manually',
-        details={'task_revoked': revoked}
+        message='Bot stop signal sent (is_running=False set in DB)',
+        details={
+            'task_revoked': revoked,
+            'task_id': bot_status.celery_task_id,
+            'note': 'Bot will close positions and stop within ~5s'
+        }
     )
 
     return JsonResponse({
         'success': True,
-        'message': 'Stop signal sent. Bot should stop within 5–30 seconds.'
+        'message': 'Stop signal sent. Bot will close any open positions and stop within ~5 seconds.'
     })
 
 
 @login_required
 def bot_status(request):
-    bot_status = BotStatus.objects.filter(user=request.user).first()
+    status = BotStatus.objects.filter(user=request.user).first()
     now = timezone.now()
 
     heartbeat_ago = "Never"
     is_actually_alive = False
 
-    if bot_status:
-        if bot_status.last_heartbeat:
-            delta = now - bot_status.last_heartbeat
-            heartbeat_ago = f"{delta.total_seconds() // 60:.0f} min ago"
-            is_actually_alive = bot_status.is_running and delta < timedelta(minutes=5)
+    if status:
+        if status.last_heartbeat:
+            delta = now - status.last_heartbeat
+            seconds = delta.total_seconds()
+            if seconds < 60:
+                heartbeat_ago = f"{int(seconds)}s ago"
+            else:
+                heartbeat_ago = f"{seconds // 60:.0f} min ago"
+            # Consider alive if is_running flag set AND heartbeat within last 30s
+            is_actually_alive = status.is_running and delta < timedelta(seconds=30)
 
     return JsonResponse({
         'is_running': is_actually_alive,
-        'flag_set': bot_status.is_running if bot_status else False,
+        'flag_set': status.is_running if status else False,
         'last_heartbeat_ago': heartbeat_ago,
-        'last_started': bot_status.last_started.isoformat() if bot_status and bot_status.last_started else None,
-        'last_stopped': bot_status.last_stopped.isoformat() if bot_status and bot_status.last_stopped else None,
-        'current_unrealized_pnl': float(bot_status.current_unrealized_pnl or 0) if bot_status else 0.0,
-        'current_margin': float(bot_status.current_margin or 0) if bot_status else 0.0,
-        'daily_target': float(bot_status.daily_profit_target or 0) if bot_status else 0.0,
-        'daily_stop_loss': float(bot_status.daily_stop_loss or 0) if bot_status else 0.0,
-        'max_lots_hard_cap': bot_status.max_lots_hard_cap or 0 if bot_status else 0,
-        'task_id': bot_status.celery_task_id or 'None' if bot_status else 'None',
-        'last_error': bot_status.last_error or 'None' if bot_status else 'None'
+        'last_started': status.last_started.isoformat() if status and status.last_started else None,
+        'last_stopped': status.last_stopped.isoformat() if status and status.last_stopped else None,
+        'current_unrealized_pnl': float(status.current_unrealized_pnl or 0) if status else 0.0,
+        'current_margin': float(status.current_margin or 0) if status else 0.0,
+        'daily_target': float(status.daily_profit_target or 0) if status else 0.0,
+        'daily_stop_loss': float(status.daily_stop_loss or 0) if status else 0.0,
+        'max_lots_hard_cap': status.max_lots_hard_cap or 1 if status else 1,
+        'task_id': status.celery_task_id or 'None' if status else 'None',
+        'last_error': status.last_error or 'None' if status else 'None',
+        'entry_locked_today': (
+            status.entry_attempted_date == date.today()
+            if status and status.entry_attempted_date else False
+        ),
     })
 
 
@@ -670,8 +666,12 @@ def update_max_lots(request):
 
         try:
             new_cap = int(max_lots_str)
-            if not 1 <= new_cap <= 10:
-                return JsonResponse({'success': False, 'error': 'Value must be between 1 and 10'}, status=400)
+            # Bot supports up to MAX_LOTS=50; keep a sane UI cap of 20
+            if not 1 <= new_cap <= 20:
+                return JsonResponse(
+                    {'success': False, 'error': 'Value must be between 1 and 20'},
+                    status=400
+                )
         except (ValueError, TypeError):
             return JsonResponse({'success': False, 'error': 'Invalid number format'}, status=400)
 
@@ -688,6 +688,7 @@ def update_max_lots(request):
         )
 
         return JsonResponse({'success': True, 'new_value': new_cap})
+
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
     except Exception as e:
@@ -739,7 +740,7 @@ def strategies_list(request):
                 'url_name': '',
                 'description': 'High-frequency intraday scalping. Multiple trades per day with quick profit booking.',
             },
-       ]
+        ]
     }
     return render(request, 'trading/strategies_list.html', context)
 
@@ -752,7 +753,6 @@ def about_us(request):
 @login_required
 def coming_soon_placeholder(request):
     strategy_name = request.resolver_match.url_name.replace('_detail', '').replace('-', ' ').title()
-    
     context = {
         'title': strategy_name,
         'description': "This powerful strategy is currently under active development. We're working hard to bring it to you soon!",

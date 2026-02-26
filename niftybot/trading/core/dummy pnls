@@ -57,9 +57,10 @@ class Config:
     ORDER_TIMEOUT = 10
     PNL_CHECK_INTERVAL_SECONDS = 1
     MIN_HOLD_SECONDS_FOR_PROFIT = 1800
-    HEARTBEAT_INTERVAL = 5        # seconds between DB heartbeat writes (dashboard refresh rate)
-    PNL_CACHE_TTL = 3             # seconds LTP cache is valid — keep short so PnL stays fresh
-    PERIODIC_PNL_SNAPSHOT_INTERVAL = 300
+    HEARTBEAT_INTERVAL = 5        # seconds between DB heartbeat writes
+    PNL_CACHE_TTL = 3             # seconds LTP cache is valid
+    # ── FIX: snapshot every 30s (was 300s) so dashboard + calendar stay fresh ──
+    PERIODIC_PNL_SNAPSHOT_INTERVAL = 3
 
 INDIA_HOLIDAYS = holidays.India()
 EXTRA_NSE_HOLIDAYS = set()
@@ -403,31 +404,21 @@ class Engine:
             raise RuntimeError("Instruments load failed")
 
     def load_weekly_df(self):
-        """
-        NIFTY weekly expiry is THURSDAY. Find the nearest upcoming Thursday expiry.
-        Falls back to the nearest available expiry if Thursday is a holiday.
-        """
         if self.instruments is None or self.instruments.empty:
             self.weekly_df = pd.DataFrame()
             return
         try:
             today = datetime.now(Config.TIMEZONE).date()
-
-            # Get all available expiries from instruments
             available_expiries = sorted(self.instruments["expiry"].unique())
-
-            # Find the nearest available expiry >= today
             target_expiry = None
             for exp in available_expiries:
                 if exp >= today:
                     target_expiry = exp
                     break
-
             if target_expiry is None:
                 self.logger.error("No future expiry found in instruments")
                 self.weekly_df = pd.DataFrame()
                 return
-
             self.weekly_df = self.instruments[self.instruments["expiry"] == target_expiry].copy()
             self.logger.info("Weekly cache updated", {
                 "expiry": target_expiry.strftime("%Y-%m-%d"),
@@ -637,7 +628,6 @@ class Engine:
                 })
             return best_strike
 
-        # Smarter fallback — find nearest OTM strike that EXISTS in weekly_df
         fallback_strike = None
         if cp == "CE":
             candidates = sorted(df["strike"].unique().tolist())
@@ -693,7 +683,6 @@ class Engine:
             return fallback, fallback * 0.85
 
     def calculate_lots(self, legs: List[dict]) -> int:
-        # 1. Get the dashboard hard cap — this is the MAXIMUM the user allows
         try:
             hard_cap = self.state.bot_status.max_lots_hard_cap
             if not isinstance(hard_cap, int) or hard_cap < 1:
@@ -701,7 +690,6 @@ class Engine:
         except (AttributeError, BotStatus.DoesNotExist):
             hard_cap = 1
 
-        # 2. Check minimum capital
         capital = self.capital_available()
         if capital < Config.MIN_CAPITAL_FOR_1LOT:
             self.logger.warning("Capital too low for even 1 lot", {
@@ -710,7 +698,6 @@ class Engine:
             })
             return 0
 
-        # 3. Get margin for exactly 1 lot to find per-lot cost
         try:
             one_lot_legs = [dict(l, quantity=Config.LOT_SIZE) for l in legs]
             initial_margin_1lot, _ = self.exact_margin_for_basket(one_lot_legs)
@@ -722,12 +709,9 @@ class Engine:
             self.logger.error("Margin API returned 0 — cannot size lots safely")
             return 0
 
-        # 4. Auto-size: how many lots can capital afford? (same as standalone script)
         affordable_lots = int((capital * Config.MAX_CAPITAL_USAGE) // initial_margin_1lot)
-
-        # 5. Apply hard cap from dashboard — user cannot exceed this
         final_lots = min(affordable_lots, hard_cap, Config.MAX_LOTS)
-        final_lots = max(final_lots, 0)  # never negative
+        final_lots = max(final_lots, 0)
 
         self.logger.info("Lot sizing result", {
             "available_capital": round(capital),
@@ -797,7 +781,6 @@ class Engine:
         return False, "", 0.0
 
     def cleanup(self, executed: List[Tuple[str, str, str]], qty: int):
-        """Reverse already-filled legs on partial entry failure."""
         for sym, side, _ in executed:
             opp = "SELL" if side == "BUY" else "BUY"
             self.logger.critical(f"CLEANUP: reversing {side} on {sym}")
@@ -1046,22 +1029,6 @@ class Engine:
     def enter(self) -> bool:
         today = datetime.now(Config.TIMEZONE).date()
 
-        # ══════════════════════════════════════════════════════════════════════
-        # STEP 1 — ACQUIRE DB ENTRY LOCK (MUST BE FIRST, BEFORE ANY API CALL)
-        #
-        # This is the ONLY place entry_attempted_date is set.
-        # Using select_for_update() inside a short atomic block ensures that
-        # even if the main loop calls enter() twice concurrently (e.g. because
-        # _entry_guard_seconds elapsed during slow API calls), only one will
-        # ever pass this gate per day. The second one sees the date already
-        # set and returns False immediately — before any API call or order.
-        #
-        # Why not put this inside a broader atomic block around the whole
-        # function? Because the order placement calls (kite.place_order) are
-        # external HTTP calls that MUST NOT run inside a DB transaction. A long
-        # transaction holding a row lock while waiting for Zerodha's API would
-        # block all other DB access to that row and risk deadlocks.
-        # ══════════════════════════════════════════════════════════════════════
         try:
             with transaction.atomic():
                 bot_status_lock = BotStatus.objects.select_for_update().get(user=self.user)
@@ -1071,7 +1038,6 @@ class Engine:
                         {"entry_attempted_date": str(bot_status_lock.entry_attempted_date), "today": str(today)}
                     )
                     return False
-                # Lock acquired — write immediately so any parallel call sees it
                 bot_status_lock.entry_attempted_date = today
                 bot_status_lock.save(update_fields=['entry_attempted_date'])
                 self.logger.critical(
@@ -1087,12 +1053,6 @@ class Engine:
                 {"error": str(lock_err), "trace": traceback.format_exc()}
             )
             return False
-        # ══════════════════════════════════════════════════════════════════════
-        # From here on: lock is held in DB. Any failure path should NOT release
-        # it — we want the day to remain locked even on partial failures to
-        # avoid a retry that could double-enter on a day where orders may have
-        # partially filled.
-        # ══════════════════════════════════════════════════════════════════════
 
         entry_call_time = datetime.now(Config.TIMEZONE)
         self.logger.critical("=== ENTER() FUNCTION CALLED ===", {
@@ -1339,7 +1299,6 @@ class Engine:
             position_qty[pe_hedge_sym] = +qty
         self.state.data["position_qty"] = position_qty
 
-        # Update last_successful_entry on BotStatus (entry_attempted_date already set at top)
         try:
             self.state.bot_status.refresh_from_db()
             self.state.bot_status.last_successful_entry = timezone.now()
@@ -1416,7 +1375,6 @@ class Engine:
             return False
         adjusted = False
 
-        # ---- CE ADJUSTMENT ----
         if (spot >= ce_short + Config.ADJUSTMENT_TRIGGER_POINTS and
                 self.state.data["adjustments_today"]["ce"] < Config.MAX_ADJUSTMENTS_PER_SIDE_PER_DAY):
             self.logger.info("DEFENSIVE ADJUSTMENT: CE STRUCK", {"spot": spot, "old_strike": ce_short})
@@ -1486,7 +1444,6 @@ class Engine:
             self.state.data["exact_margin_used_by_trade"] = actual_margin_used
             self.last_pnl = self.algo_pnl()
 
-        # ---- PE ADJUSTMENT ----
         if (spot <= pe_short - Config.ADJUSTMENT_TRIGGER_POINTS and
                 self.state.data["adjustments_today"]["pe"] < Config.MAX_ADJUSTMENTS_PER_SIDE_PER_DAY):
             self.logger.info("DEFENSIVE ADJUSTMENT: PE STRUCK", {"spot": spot, "old_strike": pe_short})
@@ -1685,26 +1642,32 @@ class Engine:
                         'loss_trades': 0,
                     }
                 )
-                daily.pnl = (daily.pnl or Decimal('0.00')) + Decimal(str(final_pnl)).quantize(Decimal('0.00'))
-                if len(still_open) == 0:
-                    daily.total_trades = (daily.total_trades or 0) + 1
-                    if final_pnl > 0:
-                        daily.win_trades = (daily.win_trades or 0) + 1
-                    else:
-                        daily.loss_trades = (daily.loss_trades or 0) + 1
+                # Always overwrite on exit — this is the authoritative final value
+                daily.pnl = Decimal(str(final_pnl)).quantize(Decimal('0.00'))
+                daily.total_trades = (daily.total_trades or 0) + (1 if len(still_open) == 0 else 0)
+                if final_pnl > 0:
+                    daily.win_trades = (daily.win_trades or 0) + (1 if len(still_open) == 0 else 0)
+                else:
+                    daily.loss_trades = (daily.loss_trades or 0) + (1 if len(still_open) == 0 else 0)
                 daily.save()
             self.logger.critical("DailyPnL UPDATED", {
                 "date": today,
-                "added_pnl": round(final_pnl, 2),
+                "final_pnl": round(final_pnl, 2),
                 "new_total": float(daily.pnl),
                 "total_trades": daily.total_trades
             })
             self.state.full_reset()
             self.last_pnl = 0.0
         except Exception as e:
-            self.logger.critical("EXIT CRASHED", {"error": str(e), "trace": traceback.format_exc()})
-            self._emergency_square_off("Exit crashed")
-            raise
+            self.logger.critical("EXIT CRASHED — bot will keep running for next day", {"error": str(e), "trace": traceback.format_exc()})
+            try:
+                self._emergency_square_off("Exit crashed")
+            except Exception as eq_err:
+                self.logger.critical("Emergency square-off also failed", {"error": str(eq_err)})
+            # DO NOT re-raise — swallow the exception so the main loop survives
+            # and the bot continues running for tomorrow's session.
+            self.state.full_reset()
+            self.last_pnl = 0.0
 
     def _get_still_open_mis_positions(self):
         try:
@@ -1718,7 +1681,6 @@ class Engine:
             return ["fetch_failed"]
 
     def _emergency_square_off(self, reason="Emergency"):
-        """Only place ONE order per position, not two."""
         self.logger.critical(f"EMERGENCY FLATTEN: {reason}")
         try:
             for pos in self.kite.positions()["net"]:
@@ -1732,9 +1694,46 @@ class Engine:
         except Exception as e:
             self.logger.critical("EMERGENCY FLATTEN FAILED", {"error": str(e)})
 
+    # ── FIX: was `pass` — now writes live unrealized PnL to DailyPnL every 30s ──
     def save_periodic_pnl_snapshot(self):
-        # Only update BotStatus heartbeat fields; do not write unrealized to DailyPnL
-        pass
+        """
+        Upsert today's DailyPnL row with the current unrealized P&L so that the
+        P&L calendar page shows live intraday values while the trade is open.
+
+        Safety rules:
+          - Only runs when trade_active is True.
+          - Never overwrites a row that exit() has already finalized
+            (total_trades > 0 means exit() has run — we leave those alone).
+          - Wrapped in transaction.atomic() to avoid partial writes.
+        """
+        if not self.state.data.get("trade_active"):
+            return
+        try:
+            today = datetime.now(Config.TIMEZONE).date()
+            current_pnl = float(self.algo_pnl() or 0)
+            with transaction.atomic():
+                daily, created = DailyPnL.objects.get_or_create(
+                    user=self.user,
+                    date=today,
+                    defaults={
+                        'pnl': Decimal(str(current_pnl)),
+                        'total_trades': 0,
+                        'win_trades': 0,
+                        'loss_trades': 0,
+                    }
+                )
+                if not created:
+                    # total_trades == 0 → exit() hasn't finalized yet, safe to update
+                    if daily.total_trades == 0:
+                        daily.pnl = Decimal(str(current_pnl)).quantize(Decimal('0.00'))
+                        daily.save(update_fields=['pnl'])
+            self.logger.info("Periodic PnL snapshot → DailyPnL", {
+                "date": str(today),
+                "pnl": round(current_pnl, 2),
+                "created": created
+            })
+        except Exception as e:
+            self.logger.warning("save_periodic_pnl_snapshot failed (non-fatal)", {"error": str(e)})
 
 
 # ===================== MAIN APPLICATION =====================
@@ -1754,19 +1753,13 @@ class TradingApplication:
         self._last_idle_date = None
         self._last_hourly_log = 0
         self._last_entry_check_time = 0.0
-        # Entry guard must exceed the entry window duration (90s) to prevent
-        # the loop from calling enter() a second time during slow API calls.
-        # Set to 120s (entry window is 9:21:00–9:22:30 = 90s).
         self._entry_guard_seconds = 120.0
         self._last_token_health_check = time.time()
         self._daily_summary_saved = False
+        # ── FIX: initialize snapshot timer so first snapshot fires after 30s ──
         self._last_snapshot_time = time.time()
 
     def _check_is_running(self) -> bool:
-        """
-        Robust is_running check with retry on DB failure.
-        Returns True if bot should keep running, False if it should stop.
-        """
         try:
             bot_status = BotStatus.objects.get(user=self.user)
             return bot_status.is_running
@@ -1774,20 +1767,19 @@ class TradingApplication:
             self.logger.critical("STOP-CHECK FAILED — DB error, assuming still running to be safe", {
                 "error": str(e)
             })
-            # Return True on DB failure so a transient DB blip doesn't kill the bot
             return True
 
     def run(self):
         self.running = True
         self.logger.info("=== HEDGED STRANGLE BOT STARTED (DJANGO VERSION) ===")
 
-        # Give the DB time to commit is_running=True before the first read.
         time.sleep(3)
 
         last_heartbeat = time.time()
 
         try:
             while self.running:
+              try:
                 now_str = datetime.now(Config.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 self.logger.critical(f"[LOOP ALIVE] {now_str} | running={self.running} | trade_active={self.engine.state.data.get('trade_active', False)}")
 
@@ -1834,7 +1826,7 @@ class TradingApplication:
                     self.logger.error("Periodic manual close check failed", {"error": str(e)})
 
                 # ---- INSTRUMENT PRE-LOAD ----
-                if dtime(6, 55) <= current_time < dtime(10, 30):
+                if dtime(6, 55) <= current_time < dtime(15, 30):
                     if self.engine.instruments is None or self.engine.weekly_df is None:
                         self.logger.info("PRE-LOADING instruments & weekly data")
                         try:
@@ -1863,7 +1855,7 @@ class TradingApplication:
                             "error": str(e),
                             "trace": traceback.format_exc()
                         })
-                        self._early_0919_logged = True  # mark done even on failure to avoid spam
+                        self._early_0919_logged = True
 
                 # ---- STARTUP BANNER AT 09:00 ----
                 if dtime(9, 0) <= current_time < dtime(9, 30) and not self._snapshot_logged:
@@ -1875,7 +1867,7 @@ class TradingApplication:
                         self._snapshot_logged = True
                     except Exception as e:
                         self.logger.error("Startup banner failed (non-fatal)", {"error": str(e)})
-                        self._snapshot_logged = True  # mark done even on failure
+                        self._snapshot_logged = True
 
                 # ---- DAILY TOKEN REFRESH ----
                 if current_time >= Config.TOKEN_REFRESH_TIME and not self.token_refreshed_today:
@@ -1900,9 +1892,10 @@ class TradingApplication:
                             self.logger.error(f"Token refresh attempt {attempts} failed", {"error": str(e)})
                         time.sleep(60)
                     else:
-                        self.logger.critical("Token refresh failed after all attempts - stopping bot")
-                        self.running = False
-                        break
+                        self.logger.critical(
+                            "Token refresh failed after all attempts — sleeping 1h before retry (bot stays alive)",
+                        )
+                        time.sleep(3600)  # sleep 1h then retry on next loop iteration
 
                 if current_time < Config.TOKEN_REFRESH_TIME:
                     self.token_refreshed_today = False
@@ -1919,9 +1912,10 @@ class TradingApplication:
                         if success:
                             self.logger.info("Mid-day token refresh succeeded")
                         else:
-                            self.logger.critical("Mid-day re-auth FAILED — stopping bot")
-                            self.running = False
-                            break
+                            self.logger.critical(
+                                "Mid-day re-auth FAILED — sleeping 10min before retry (bot stays alive)"
+                            )
+                            time.sleep(600)
                     except Exception as e:
                         self.logger.warning("Token health check failed (non-fatal)", {"error": str(e)})
                     self._last_token_health_check = time.time()
@@ -1959,10 +1953,6 @@ class TradingApplication:
                                 time.sleep(300)
                                 continue
 
-                            # Fast in-memory guard — if trade was already taken today
-                            # (set in state after successful entry), skip immediately
-                            # without touching the DB. The DB lock in enter() is the
-                            # authoritative guard; this just avoids unnecessary calls.
                             if self.engine.state.data.get("trade_taken_today"):
                                 time.sleep(5)
                                 continue
@@ -2004,18 +1994,15 @@ class TradingApplication:
                                     time.sleep(300)
                                 else:
                                     self.logger.warning("Entry attempt failed — day is now locked, no retry today")
-                                    time.sleep(120)  # entry window is 90s, sleep past it
+                                    time.sleep(120)
                             except Exception as e:
                                 self.logger.error("Entry execution crashed", {
                                     "error": str(e),
                                     "trace": traceback.format_exc()
                                 })
-                                # Sleep well past the entry window end so even if the DB lock
-                                # failed to set (e.g. DB connection error during locking),
-                                # the loop cannot re-enter the window.
                                 time.sleep(180)
 
-                # ---- INSTRUMENTS NOT LOADED YET - force load if in trading hours ----
+                # ---- INSTRUMENTS NOT LOADED YET ----
                 elif self.engine.instruments is None and dtime(9, 0) <= current_time < dtime(15, 30):
                     self.logger.warning("Instruments not loaded during trading hours — forcing reload")
                     try:
@@ -2032,21 +2019,21 @@ class TradingApplication:
                         self._daily_summary_saved = True
                     except Exception as e:
                         self.logger.error("Market close summary failed", {"error": str(e)})
-                        self._daily_summary_saved = True  # prevent infinite retry
+                        self._daily_summary_saved = True
 
-                # ---- HEARTBEAT (every 5s) — writes PnL to DB so dashboard updates ----
+                # ══════════════════════════════════════════════════════════════
+                # HEARTBEAT (every 5s)
+                # Writes current_unrealized_pnl → BotStatus so the dashboard
+                # live tile updates. Also resets last_heartbeat for aliveness check.
+                # ══════════════════════════════════════════════════════════════
                 if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                     try:
                         bot_status = BotStatus.objects.get(user=self.user)
-                        # algo_pnl() uses bulk_ltp() with a 3s cache — fresh enough for 5s heartbeat
                         current_pnl = float(self.engine.algo_pnl() or 0)
                         bot_status.last_heartbeat = timezone.now()
                         bot_status.current_unrealized_pnl = Decimal(str(current_pnl))
-                        # Only save margin during active trade; avoids redundant Zerodha API call
-                        # every 5s when nothing has changed. Margin is updated on entry/exit/adjustment.
                         save_fields = ['last_heartbeat', 'current_unrealized_pnl']
                         if self.engine.state.data.get("trade_active"):
-                            # Print live PnL to console so Celery logs show it (replaces the old 1s log)
                             target = self.engine.state.data.get("profit_target_rupee", 0)
                             print(
                                 f"[PnL] ₹{current_pnl:,.2f} | Target: ₹{target:,} | "
@@ -2058,7 +2045,30 @@ class TradingApplication:
                         self.logger.warning("Heartbeat save failed", {"error": str(e)})
                     last_heartbeat = time.time()
 
+                # ══════════════════════════════════════════════════════════════
+                # PERIODIC PNL SNAPSHOT (every 30s, only during active trade)
+                # Writes unrealized PnL → DailyPnL so the P&L calendar page
+                # shows a live intraday value. exit() will overwrite this with
+                # the authoritative final value when the trade closes.
+                # ══════════════════════════════════════════════════════════════
+                if (self.engine.state.data.get("trade_active") and
+                        time.time() - self._last_snapshot_time >= Config.PERIODIC_PNL_SNAPSHOT_INTERVAL):
+                    self.engine.save_periodic_pnl_snapshot()
+                    self._last_snapshot_time = time.time()
+
                 time.sleep(1.0)
+
+              except KeyboardInterrupt:
+                raise  # let outer handler catch it
+              except Exception as loop_err:
+                self.logger.critical("LOOP ITERATION ERROR — recovering and continuing", {
+                    "error": str(loop_err),
+                    "error_type": type(loop_err).__name__,
+                    "trace": traceback.format_exc()
+                })
+                # If a trade is somehow still marked active but we crashed,
+                # leave state alone — next iteration will re-check exit conditions.
+                time.sleep(5)  # brief pause before retrying
 
         except KeyboardInterrupt:
             self.logger.info("Bot stopped by user (KeyboardInterrupt)")
