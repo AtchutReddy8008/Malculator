@@ -7,15 +7,21 @@ sudo apt install redis-server -y && sudo systemctl enable --now redis-server
 redis-cli ping   # should say PONG
 
 
+sudo systemctl daemon-reload
+sudo systemctl restart celery
+sudo systemctl restart gunicorn
+
+
+sudo journalctl -u celery -n 5 --no-pager
 sudo systemctl enable gunicorn
 sudo systemctl start gunicorn
 sudo systemctl restart nginx
 -------------------------------------------------------
-
+ps aux | grep celery   to check clelery file
 
 sudo nano /etc/systemd/system/niftybot-django.service
 
-
+sudo nano /etc/systemd/system/celery.service
 
 sudo nano /etc/systemd/system/gunicorn.service
 
