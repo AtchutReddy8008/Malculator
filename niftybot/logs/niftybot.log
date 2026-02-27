@@ -8698,3 +8698,200 @@ DEBUG 2026-02-25 12:39:51,565 auth [AUTH] 2FA successful
 DEBUG 2026-02-25 12:39:52,251 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?status=success&request_token=6X2293Lo0KpqpTcxbLeD4Wz9K6oMczfS&action=login&type=login
 INFO 2026-02-25 12:39:52,254 auth [AUTH] Request token extracted successfully (len=32)
 INFO 2026-02-25 12:39:52,565 auth [AUTH SUCCESS] Access token generated & saved (prefix: 0w9h4d...)
+INFO 2026-02-27 10:24:36,866 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=79d335a2-cf3a-488b-a70f-2d339095d401
+INFO 2026-02-27 10:24:36,885 tasks [user:tradewithnaman] [79d335a2-cf3a-488b-a70f-2d339095d401] BotStatus updated — is_running=True
+ERROR 2026-02-27 10:24:36,893 tasks [user:tradewithnaman] [79d335a2-cf3a-488b-a70f-2d339095d401] Config error: Missing broker access token
+INFO 2026-02-27 10:24:36,921 tasks [user:tradewithnaman] [79d335a2-cf3a-488b-a70f-2d339095d401] Final cleanup: is_running=False saved
+INFO 2026-02-27 10:24:36,921 tasks [user:tradewithnaman] [79d335a2-cf3a-488b-a70f-2d339095d401] Task complete — bot marked stopped
+INFO 2026-02-27 10:24:37,072 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=27cd50fc-3d91-4a63-8b97-0a22b975a3f8
+INFO 2026-02-27 10:24:37,079 tasks [user:tradewithnaman] [27cd50fc-3d91-4a63-8b97-0a22b975a3f8] BotStatus updated — is_running=True
+ERROR 2026-02-27 10:24:37,087 tasks [user:tradewithnaman] [27cd50fc-3d91-4a63-8b97-0a22b975a3f8] Config error: Missing broker access token
+INFO 2026-02-27 10:24:37,107 tasks [user:tradewithnaman] [27cd50fc-3d91-4a63-8b97-0a22b975a3f8] Final cleanup: is_running=False saved
+INFO 2026-02-27 10:24:37,107 tasks [user:tradewithnaman] [27cd50fc-3d91-4a63-8b97-0a22b975a3f8] Task complete — bot marked stopped
+INFO 2026-02-27 10:24:37,322 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 10:24:37,672 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=67ef96b1-14e0-494c-b51f-a769cdc5ea0e
+INFO 2026-02-27 10:24:37,685 tasks [user:tradewithnaman] [67ef96b1-14e0-494c-b51f-a769cdc5ea0e] BotStatus updated — is_running=True
+ERROR 2026-02-27 10:24:37,686 tasks [user:tradewithnaman] [67ef96b1-14e0-494c-b51f-a769cdc5ea0e] Config error: Missing broker access token
+INFO 2026-02-27 10:24:37,708 tasks [user:tradewithnaman] [67ef96b1-14e0-494c-b51f-a769cdc5ea0e] Final cleanup: is_running=False saved
+INFO 2026-02-27 10:24:37,708 tasks [user:tradewithnaman] [67ef96b1-14e0-494c-b51f-a769cdc5ea0e] Task complete — bot marked stopped
+DEBUG 2026-02-27 10:24:38,192 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=4U1FlXPAZpCVTvYs16L4m0Bt1Dcs1uIk)
+INFO 2026-02-27 10:24:38,282 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=15bfda7d-f6cb-481d-90e2-e873c308ca4a
+INFO 2026-02-27 10:24:38,291 tasks [user:tradewithnaman] [15bfda7d-f6cb-481d-90e2-e873c308ca4a] BotStatus updated — is_running=True
+ERROR 2026-02-27 10:24:38,291 tasks [user:tradewithnaman] [15bfda7d-f6cb-481d-90e2-e873c308ca4a] Config error: Missing broker access token
+INFO 2026-02-27 10:24:38,324 tasks [user:tradewithnaman] [15bfda7d-f6cb-481d-90e2-e873c308ca4a] Final cleanup: is_running=False saved
+INFO 2026-02-27 10:24:38,324 tasks [user:tradewithnaman] [15bfda7d-f6cb-481d-90e2-e873c308ca4a] Task complete — bot marked stopped
+DEBUG 2026-02-27 10:24:38,324 auth [AUTH] Login success - request_id: obhnziOP6hSYK9mqw4jIc9uhK6tf1LQcvC9czsrlrBuClLBY2cxL0zgORkYLDVEC
+DEBUG 2026-02-27 10:24:38,457 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:24:38,810 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=WZ3I76ZXj0l46UY5K82hUWH2qFrMEJK7
+INFO 2026-02-27 10:24:38,810 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:24:39,629 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:24:39,637 tasks Token generation task succeeded for broker 1
+INFO 2026-02-27 10:25:14,388 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=aa1b18a4-068b-480a-8328-6ca091eafbd6
+INFO 2026-02-27 10:25:14,418 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] BotStatus updated — is_running=True
+INFO 2026-02-27 10:25:14,425 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Broker loaded successfully
+INFO 2026-02-27 10:25:14,461 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 10:25:15,299 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=UjHc0byaODBZNdj9SIGOjWOPvnA5ExTh)
+DEBUG 2026-02-27 10:25:15,467 auth [AUTH] Login success - request_id: i9yroNXR7JrpENXZDedXzSRb5DKMBD6ZtZvYv7NCRhWpEKtOYZeEhV2tug2sY5Jh
+DEBUG 2026-02-27 10:25:15,606 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:25:16,118 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?type=login&status=success&request_token=5zjETzVs3U1iDcvCpoZ8ghzMxgdlNft1&action=login
+INFO 2026-02-27 10:25:16,122 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:25:16,661 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:25:16,727 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] TradingApplication initialized — handing control to app.run()
+INFO 2026-02-27 10:25:27,922 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 10:25:28,471 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=lTJjdqqSmma1JoDn5NboEMTuhP7qYDoQ)
+DEBUG 2026-02-27 10:25:28,581 auth [AUTH] Login success - request_id: xvEmjCP11BEG6GmVvn6D66WUNKEsFIOzi99YGkJKygFFthJVTeCXj0jGzepgbV5V
+DEBUG 2026-02-27 10:25:28,704 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:25:29,294 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?request_token=JXgF6IVknpTvsZrQ3V3KDg73g5eRydsL&action=login&type=login&status=success
+INFO 2026-02-27 10:25:29,296 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:25:29,676 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+WARNING 2026-02-27 10:34:48,947 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+INFO 2026-02-27 10:35:03,172 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Final cleanup: is_running=False saved
+INFO 2026-02-27 10:35:03,172 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Final cleanup: forcing engine exit
+INFO 2026-02-27 10:56:17,975 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=aa1b18a4-068b-480a-8328-6ca091eafbd6
+INFO 2026-02-27 10:56:18,019 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] BotStatus updated — is_running=True
+INFO 2026-02-27 10:56:18,043 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Broker loaded successfully
+INFO 2026-02-27 10:56:18,082 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 10:56:18,501 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=14858b9c-6406-44b6-9196-934c75e7845c
+INFO 2026-02-27 10:56:18,521 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] BotStatus updated — is_running=True
+INFO 2026-02-27 10:56:18,527 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Broker loaded successfully
+INFO 2026-02-27 10:56:18,546 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 10:56:19,034 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=b66c9021-f399-43be-b215-c107cb1f3d43
+INFO 2026-02-27 10:56:19,047 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] BotStatus updated — is_running=True
+INFO 2026-02-27 10:56:19,065 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] Broker loaded successfully
+INFO 2026-02-27 10:56:19,092 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 10:56:19,246 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?sess_id=JQVlNTDRta3WooA9qXkVCtUxQBAVLN1d&api_key=18849rc11xpoiqa7)
+DEBUG 2026-02-27 10:56:19,257 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=vWbcpWgsXbzO1dGnxVyLTcYIntec1h71)
+DEBUG 2026-02-27 10:56:19,378 auth [AUTH] Login success - request_id: Jx0SgsFr102wIU39P3WBFbI3xh6wT09iv28HBTqdcivLz2TS7sh9HT0YOTs23FQZ
+DEBUG 2026-02-27 10:56:19,389 auth [AUTH] Login success - request_id: zdXPzLEPsWTDWAUoL7TWrAeJXezjLfxXnGbIdOa70eIsljvEupSXvw6Rno6kCS5j
+DEBUG 2026-02-27 10:56:19,486 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:19,500 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:19,723 auth [AUTH] Redirect final URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=Csq2M8AhQc61a4BjRbp8NfKa67XNwgrX
+ERROR 2026-02-27 10:56:19,729 auth [AUTH ERROR] Attempt 1 failed: ValueError - No request_token found in redirect URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=Csq2M8AhQc61a4BjRbp8NfKa67XNwgrX
+INFO 2026-02-27 10:56:19,730 auth [AUTH] Retrying in 15 seconds...
+DEBUG 2026-02-27 10:56:19,853 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=PVLxTd2LQGqBhFJ1n02Ixj3YnhPWQRGf
+INFO 2026-02-27 10:56:19,855 auth [AUTH] Request token extracted successfully (len=32)
+DEBUG 2026-02-27 10:56:19,888 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=3K90UCxdnxbzGktOcU01Bp66KuW55X4q)
+DEBUG 2026-02-27 10:56:20,091 auth [AUTH] Login success - request_id: NCjEbTQZNLz6L89I6WD3tEDuJ6uO6VklMfq1iCc9U7M5vUcpcPv8qkO8eOXt5xM6
+DEBUG 2026-02-27 10:56:20,198 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:20,570 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=qc0gYT7ZW7vwdNB0tlj8pD3Ye8yCYES1
+INFO 2026-02-27 10:56:20,572 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:56:20,990 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:56:21,028 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] TradingApplication initialized — handing control to app.run()
+INFO 2026-02-27 10:56:21,285 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:56:21,301 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] TradingApplication initialized — handing control to app.run()
+INFO 2026-02-27 10:56:28,610 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 10:56:31,552 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 10:56:31,962 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=o5Ph0SXUYPpj18fDvc4USjMH1umT4jD3)
+DEBUG 2026-02-27 10:56:32,021 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=4AIAL6AbW0SVhVBzOUzTeI0QpIlItgqu)
+DEBUG 2026-02-27 10:56:32,083 auth [AUTH] Login success - request_id: OQO9Yq7gLa0JdIWxWPbM0SNh2EWnn4V1oLH1BLJoqXISX5r0ogjVVbrnMAb58l82
+DEBUG 2026-02-27 10:56:32,128 auth [AUTH] Login success - request_id: jv5604NrtFARNESCFaYDVVOg16NoYMD0z8jUlU1tWSvjr27OiwoG3FABN2ExlaMe
+DEBUG 2026-02-27 10:56:32,243 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:32,253 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:32,489 auth [AUTH] Redirect final URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=WHzmFDvavQOI5kPU0ViOrYlV2mFDp28T
+ERROR 2026-02-27 10:56:32,491 auth [AUTH ERROR] Attempt 1 failed: ValueError - No request_token found in redirect URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=WHzmFDvavQOI5kPU0ViOrYlV2mFDp28T
+INFO 2026-02-27 10:56:32,492 auth [AUTH] Retrying in 15 seconds...
+DEBUG 2026-02-27 10:56:32,647 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=Oe042ATKkhHNUD0ekfB0Z5LU4zeZNhjW
+INFO 2026-02-27 10:56:32,648 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:56:32,991 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:56:36,819 auth [AUTH ATTEMPT 2/3] Starting login for IQK919
+DEBUG 2026-02-27 10:56:37,290 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=o98pYdoUA303kjBc2X9VJ6Z6a78OEP9o)
+DEBUG 2026-02-27 10:56:37,413 auth [AUTH] Login success - request_id: A9Jyswk2ItzmmagaA4j4FSB1i6s9tAIGLyOV3SNwHMyZZtvK9xQAfaFla2eGpHxN
+DEBUG 2026-02-27 10:56:37,539 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:37,962 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=MLTRQ62A7cbpAPFYyfE9FOuphZnptXtN
+INFO 2026-02-27 10:56:37,962 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:56:38,671 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 10:56:38,719 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] TradingApplication initialized — handing control to app.run()
+INFO 2026-02-27 10:56:46,124 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 10:56:47,058 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=wrS2JXuLPNQ0QYwtPVik4J8LrTKsFd50)
+DEBUG 2026-02-27 10:56:47,197 auth [AUTH] Login success - request_id: 7ubUAW6VzlgusXET42KtLJZU7wqHKt8APiWYAO2LiuK7SkPO68vhE3CFfnBwhZWE
+DEBUG 2026-02-27 10:56:47,322 auth [AUTH] 2FA successful
+INFO 2026-02-27 10:56:47,497 auth [AUTH ATTEMPT 2/3] Starting login for IQK919
+DEBUG 2026-02-27 10:56:47,766 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=8inQ113YVfMrxmvFbZpHpckG2ZcowygQ
+INFO 2026-02-27 10:56:47,768 auth [AUTH] Request token extracted successfully (len=32)
+DEBUG 2026-02-27 10:56:47,946 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=4momXD3hDO1wIc7NWqh2FikravFpV0W4)
+DEBUG 2026-02-27 10:56:48,078 auth [AUTH] Login success - request_id: OUWEnWNouiOjn1OshNanpgfz74OjZC8SbHcCvzNKWcK0llUPf65vCcGC2g37k0Pl
+INFO 2026-02-27 10:56:48,106 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+DEBUG 2026-02-27 10:56:48,200 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 10:56:48,692 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=j05DELuOsOnRz8yjAX5BJ4GphonJsSGi
+INFO 2026-02-27 10:56:48,694 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 10:56:52,217 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+WARNING 2026-02-27 11:19:08,548 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+INFO 2026-02-27 11:19:12,642 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] Final cleanup: is_running=False saved
+INFO 2026-02-27 11:19:12,642 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] Task complete — bot marked stopped
+INFO 2026-02-27 11:19:12,674 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Final cleanup: is_running=False saved
+INFO 2026-02-27 11:19:12,674 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Task complete — bot marked stopped
+INFO 2026-02-27 11:19:12,706 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Final cleanup: is_running=False saved
+INFO 2026-02-27 11:19:12,706 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Task complete — bot marked stopped
+INFO 2026-02-27 11:20:42,179 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=b66c9021-f399-43be-b215-c107cb1f3d43
+INFO 2026-02-27 11:20:42,226 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] BotStatus updated — is_running=True
+INFO 2026-02-27 11:20:42,241 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] Broker loaded successfully
+INFO 2026-02-27 11:20:42,280 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 11:20:42,613 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=14858b9c-6406-44b6-9196-934c75e7845c
+INFO 2026-02-27 11:20:42,630 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] BotStatus updated — is_running=True
+INFO 2026-02-27 11:20:42,642 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Broker loaded successfully
+INFO 2026-02-27 11:20:42,664 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 11:20:42,815 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=6w0nacOAuhzLWLxBAauUssq5RjXv5SGD)
+DEBUG 2026-02-27 11:20:42,932 auth [AUTH] Login success - request_id: JDCI4l0vWbbnnLUpwScEM7V2Vw2W5NKx1hmdaN3HcEkm0Jhz628rABGaTkAHan68
+DEBUG 2026-02-27 11:20:43,061 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:20:43,092 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=nuSM5PD7jJJax7nZ54x48ZPSmnoXbL7V)
+DEBUG 2026-02-27 11:20:43,210 auth [AUTH] Login success - request_id: vEY0ylG0Q3lI6voCJDUDBLLyJHjA6SOHasFuA7nvwupWi58ORNuqiB8jKHPE3xqn
+INFO 2026-02-27 11:20:43,253 tasks [user:tradewithnaman] [TASK START] run_user_bot task_id=aa1b18a4-068b-480a-8328-6ca091eafbd6
+INFO 2026-02-27 11:20:43,284 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] BotStatus updated — is_running=True
+INFO 2026-02-27 11:20:43,294 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Broker loaded successfully
+INFO 2026-02-27 11:20:43,319 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 11:20:43,347 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:20:43,526 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=KHIXsDSzUoqnmv72oX0rNlDwbBGzmAAE
+INFO 2026-02-27 11:20:43,529 auth [AUTH] Request token extracted successfully (len=32)
+DEBUG 2026-02-27 11:20:43,729 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=koOCIfBvmxblr4yebCu2x150T0pgsUn7
+INFO 2026-02-27 11:20:43,732 auth [AUTH] Request token extracted successfully (len=32)
+DEBUG 2026-02-27 11:20:43,862 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=ASq5TtVB8EGPXluDSpNFpuja1mjVcxCQ)
+INFO 2026-02-27 11:20:43,930 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 11:20:44,007 tasks [user:tradewithnaman] [b66c9021-f399-43be-b215-c107cb1f3d43] TradingApplication initialized — handing control to app.run()
+DEBUG 2026-02-27 11:20:44,081 auth [AUTH] Login success - request_id: 9naYwsm5Ha6u4PB8JGccgJDEZh6cGWffbir2k6OWthS7ldj4keFcY7Egl8qgLNJR
+INFO 2026-02-27 11:20:44,220 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 11:20:44,261 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] TradingApplication initialized — handing control to app.run()
+DEBUG 2026-02-27 11:20:44,280 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:20:44,620 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=ddFwjwJMy0k3iaia3B6M0MFM8HXrlstI
+INFO 2026-02-27 11:20:44,623 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 11:20:44,927 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 11:20:44,970 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] TradingApplication initialized — handing control to app.run()
+INFO 2026-02-27 11:20:52,446 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 11:20:54,702 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=3k16mnV3qo3WaXNMaOgNTWVIDnlN4YM7)
+DEBUG 2026-02-27 11:20:55,172 auth [AUTH] Login success - request_id: NWcmMGTfekZKm9I2BwZG5a161dOVci7AGdAFvzjdOku83C37WtMI4kXRW2vXisy2
+DEBUG 2026-02-27 11:20:55,307 auth [AUTH] 2FA successful
+INFO 2026-02-27 11:20:59,190 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+INFO 2026-02-27 11:21:02,737 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 11:21:02,745 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=QGm7rUJ1BhYRyq6vCIbd6zlSgV8uYLLP
+INFO 2026-02-27 11:21:02,748 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 11:21:02,919 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+DEBUG 2026-02-27 11:21:03,658 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=5kgvBsWT1IOPu4kHMsrotwHGR9iEeVW2)
+DEBUG 2026-02-27 11:21:03,684 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=5vxd5rLN0eK5RvqI256lNh3FTjcI40MJ)
+DEBUG 2026-02-27 11:21:06,980 auth [AUTH] Login success - request_id: AUrZsRrnNErYw7IR7X1K5lxX3FN7TQjzwObcCPbZjB2ozcX2vKp0w026nGRsZ1CO
+DEBUG 2026-02-27 11:21:06,991 auth [AUTH] Login success - request_id: vrcbxWoOTKrlz4okwXorRaC0LBLuexpLoRaHii1H6PK9kQa01wb70iwlXI0fG5Yn
+DEBUG 2026-02-27 11:21:07,180 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:21:07,193 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:21:07,418 auth [AUTH] Redirect final URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=zNI1wltd4ce1c0IjqIynp6fHMmS8rkP5
+ERROR 2026-02-27 11:21:07,418 auth [AUTH ERROR] Attempt 1 failed: ValueError - No request_token found in redirect URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=zNI1wltd4ce1c0IjqIynp6fHMmS8rkP5
+INFO 2026-02-27 11:21:07,420 auth [AUTH] Retrying in 15 seconds...
+DEBUG 2026-02-27 11:21:07,570 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=37w2XX3GMCPcQFPEFn82Hvkz1FzpLpnc
+INFO 2026-02-27 11:21:07,574 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 11:21:07,726 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 11:21:22,423 auth [AUTH ATTEMPT 2/3] Starting login for IQK919
+DEBUG 2026-02-27 11:21:22,648 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=dFLbv9K8Qu5IravvlhkgJ6QUftPJ3eKM)
+DEBUG 2026-02-27 11:21:22,746 auth [AUTH] Login success - request_id: Xsl76utMFOcm1SekRtE3uiRUQqPeGkEyRqlDKVugyAynToj4Cg6fqOkykvUo658E
+DEBUG 2026-02-27 11:21:22,837 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:21:23,158 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=tWoc85GUVFn2LzT2nZhjMZl76KLC5O1G
+INFO 2026-02-27 11:21:23,158 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 11:21:23,259 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+INFO 2026-02-27 11:22:32,453 auth [AUTH ATTEMPT 1/3] Starting login for IQK919
+DEBUG 2026-02-27 11:22:36,387 auth [AUTH] Login page loaded (URL: https://kite.zerodha.com/connect/login?api_key=18849rc11xpoiqa7&sess_id=EqYWmEA10z5Utn8v8NVxNE4iPdoZDO2v)
+DEBUG 2026-02-27 11:22:36,938 auth [AUTH] Login success - request_id: 3XRh1UbXceBncOM4OXFpwPRY4P7zdpDCBhXmsfNDy00CkUGINyF1o84RX0PTy2wr
+DEBUG 2026-02-27 11:22:37,339 auth [AUTH] 2FA successful
+DEBUG 2026-02-27 11:22:38,382 auth [AUTH] Redirect final URL: https://kite.zerodha.com/dashboard?action=login&type=login&status=success&request_token=3Eq0j2oExwI7qksuvDBWMyauv2TJw4jd
+INFO 2026-02-27 11:22:38,386 auth [AUTH] Request token extracted successfully (len=32)
+INFO 2026-02-27 11:22:40,637 auth [AUTH SUCCESS] Access token generated & saved (prefix: tsNFgO...)
+WARNING 2026-02-27 11:38:15,663 tasks [SIGNAL] Received signal 2 — exiting worker gracefully
+INFO 2026-02-27 11:38:30,164 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Final cleanup: is_running=False saved
+INFO 2026-02-27 11:38:30,165 tasks [user:tradewithnaman] [aa1b18a4-068b-480a-8328-6ca091eafbd6] Task complete — bot marked stopped
+INFO 2026-02-27 11:38:30,214 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Final cleanup: is_running=False saved
+INFO 2026-02-27 11:38:30,215 tasks [user:tradewithnaman] [14858b9c-6406-44b6-9196-934c75e7845c] Task complete — bot marked stopped
