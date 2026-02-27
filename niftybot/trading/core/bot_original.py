@@ -998,7 +998,7 @@ class Engine:
     def algo_pnl(self) -> float:
         legs = self.state.data.get("algo_legs", {})
         if not legs:
-            self.logger.warning("algo_pnl: No legs found in state - returning 0")
+            self.logger.info("No active trade - PnL = 0")
             return 0.0
 
         open_symbols = [

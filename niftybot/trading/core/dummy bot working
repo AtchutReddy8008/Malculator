@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(11, 21, 0)
-    ENTRY_END                        = dtime(11, 22, 59)          # 60-second window
+    ENTRY_START                      = dtime(9, 21, 0)
+    ENTRY_END                        = dtime(9, 22, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -722,9 +722,6 @@ class Engine:
 
     def calculate_lots(self, legs: List[dict]) -> int:
         # ── Step 1: Read hard cap from dashboard (BotStatus.max_lots_hard_cap) ─────────
-        # This is set in the Django admin / dashboard UI per user.
-        # Set it to 2 in the dashboard to limit to 2 lots regardless of capital.
-        # Falls back to 1 if the field is missing or invalid.
         try:
             hard_cap = int(self.state.bot_status.max_lots_hard_cap)
             if hard_cap < 1:
@@ -761,8 +758,6 @@ class Engine:
         affordable_lots = int((capital * Config.MAX_CAPITAL_USAGE) // initial_margin_1lot)
 
         # ── Step 5: Apply all caps in order of priority ─────────────────────────
-        # Priority: dashboard hard_cap > Config.MAX_LOTS > what capital allows
-        # To trade exactly 2 lots: set max_lots_hard_cap = 2 in the dashboard.
         final_lots = min(affordable_lots, hard_cap, Config.MAX_LOTS)
         final_lots = max(final_lots, 0)
 
@@ -814,9 +809,6 @@ class Engine:
                             )
                             filled_price = self.bulk_ltp([symbol]).get(symbol, 0.0)
 
-                        # ── FIX: ONE call to _get_or_create_trade per fill.
-                        #         No logger.trade() call here — that previously
-                        #         created a second duplicate Trade record.
                         self._get_or_create_trade(symbol, side, qty, filled_price, order_id)
                         self.logger.trade(
                             f"{side}_{symbol}", symbol,
@@ -858,10 +850,6 @@ class Engine:
         """
         Place multiple legs simultaneously using ThreadPoolExecutor.
         Returns (success, order_ids_list, filled_prices_dict).
-
-        FIX: removed the duplicate logger.trade() call that previously fired
-        alongside _get_or_create_trade(), causing 3 Trade rows per leg.
-        Now each leg creates exactly ONE Trade record via _get_or_create_trade().
         """
         order_ids     = []
         filled_prices = {}
@@ -954,10 +942,6 @@ class Engine:
                             order_ids.append(oid)
                             filled_prices[sym] = fp
 
-                            # ── FIX: ONE Trade record per leg.
-                            #         Previously logger.trade() was also called
-                            #         here which created a SECOND duplicate record.
-                            #         Now only _get_or_create_trade() runs.
                             self._get_or_create_trade(sym, side, qty, fp, oid)
                             self.logger.trade(
                                 f"{side}_{sym}", sym,
@@ -1014,7 +998,7 @@ class Engine:
     def algo_pnl(self) -> float:
         legs = self.state.data.get("algo_legs", {})
         if not legs:
-            self.logger.warning("algo_pnl: No legs found in state - returning 0")
+            self.logger.info("No active trade - PnL = 0")
             return 0.0
 
         open_symbols = [
@@ -1298,48 +1282,42 @@ class Engine:
         return int(round(spot / 50) * 50)
 
     # ── ENTER ─────────────────────────────────────────────────────────────
-    # ── ENTER ─────────────────────────────────────────────────────────────
     def enter(self) -> bool:
         now   = datetime.now(Config.TIMEZONE)
         today = now.date()
 
         # =====================================================================
-        # ATOMIC DB ENTRY GATE — single source of truth for entry prevention.
+        # PHASE 1: Atomic DB lock — held for < 100ms, no slow work inside.
         #
-        # With --pool=gevent --concurrency=20, multiple coroutines reach this
-        # point simultaneously. select_for_update() inside transaction.atomic()
-        # is the ONLY truly coroutine-safe guard:
-        #   - Coroutine 1 acquires the DB row lock, sets entry_attempted_date,
-        #     commits, and proceeds to place orders.
-        #   - Coroutines 2..20 block at select_for_update() until coroutine 1
-        #     commits, then read entry_attempted_date == today and return False.
-        #
-        # No in-memory bool flags needed — the DB is the lock.
+        # select_for_update() serialises concurrent gevent coroutines at the DB
+        # level. The ONLY thing we do inside the transaction is check + set
+        # entry_attempted_date, then commit and release the row lock immediately.
+        # All slow API calls, order placement, and sleeps happen in Phase 2 after
+        # the lock is released — so other coroutines are never blocked waiting.
         # =====================================================================
+        already_attempted = False
         try:
             with transaction.atomic():
                 bot_status = BotStatus.objects.select_for_update().get(user=self.user)
 
                 if bot_status.entry_attempted_date == today:
-                    self.logger.critical(
-                        "ENTRY ALREADY ATTEMPTED TODAY (DB gate) — ABORTING",
-                        {"locked_date": str(today)}
-                    )
-                    return False
+                    already_attempted = True
 
-                if self.state.data.get("trade_active"):
+                elif self.state.data.get("trade_active"):
                     self.logger.info("Trade already active — skipping entry")
                     return False
 
-                # We are the ONLY coroutine past this point — set the lock NOW
-                # before any slow network/API work begins
-                bot_status.entry_attempted_date = today
-                bot_status.save(update_fields=["entry_attempted_date"])
-
-                self.logger.critical(
-                    "ENTRY GATE ACQUIRED — DB lock set. No other coroutine can enter today.",
-                    {"date_locked": str(today)}
-                )
+                else:
+                    # Stamp the date NOW, before the lock is released.
+                    # Any coroutine that arrives after this commit will see
+                    # entry_attempted_date == today and bail out immediately.
+                    bot_status.entry_attempted_date = today
+                    bot_status.save(update_fields=["entry_attempted_date"])
+                    self.logger.critical(
+                        "ENTRY LOCK SET & COMMITTED — no other coroutine can enter today.",
+                        {"date_locked": str(today)}
+                    )
+                # Transaction commits here → DB row lock released.
 
         except BotStatus.DoesNotExist:
             self.logger.critical("BotStatus row missing — cannot enter safely")
@@ -1350,9 +1328,20 @@ class Engine:
             })
             return False
 
-        # From here: we are the ONE coroutine allowed to trade today.
-        # Also set the in-memory flag so the loop skips immediately on next tick
-        # without hitting the DB on every iteration during the 60-second window.
+        # Bail out AFTER the transaction so we never hold the lock during a log call.
+        if already_attempted:
+            self.logger.critical(
+                "ENTRY ALREADY ATTEMPTED TODAY (DB gate) — ABORTING",
+                {"locked_date": str(today)}
+            )
+            return False
+
+        # =====================================================================
+        # PHASE 2: Lock is released. We are the ONE coroutine allowed to trade
+        # today. All slow work (API calls, order placement, sleeps) happens here.
+        # =====================================================================
+
+        # In-memory fast-path flag so the loop skips without a DB hit each tick.
         self.state.data["trade_taken_today"] = True
         self.state.save()
 
@@ -1485,7 +1474,6 @@ class Engine:
 
         # ── ORDER EXECUTION ───────────────────────────────────────────────
         # BUY hedges first (protection before short exposure), then SELL shorts.
-        # Each basket fires legs concurrently = 2 brokerage charges total.
         buy_legs  = []
         sell_legs = []
         if pe_hedge_sym:
@@ -1628,7 +1616,6 @@ class Engine:
         self.last_pnl = self.algo_pnl()
         time.sleep(2)
         return True
-
 
     # ── CHECK EXISTING POSITIONS ──────────────────────────────────────────
     def check_existing_positions(self) -> bool:
@@ -2199,18 +2186,6 @@ class TradingApplication:
         self._last_snapshot_time       = time.time()
 
         # ── Gevent-safe entry lock ────────────────────────────────────────────────────
-        # With --pool=gevent --concurrency=20, all 20 coroutines for this user
-        # share the same process memory. A plain bool is NOT safe because gevent
-        # can switch coroutines between the flag CHECK and the flag SET, allowing
-        # multiple coroutines to all pass the check before any one sets the flag.
-        #
-        # BoundedSemaphore(1) is coroutine-atomic: only ONE coroutine can call
-        # acquire(blocking=False) and get True. Every other simultaneous coroutine
-        # gets False immediately and skips. This is the outermost guard, sitting
-        # in front of the DB lock inside enter().
-        #
-        # Stored at module level (_USER_ENTRY_LOCKS[user_id]) so the lock
-        # survives TradingApplication re-instantiation within the same worker.
         if self.user.id not in _USER_ENTRY_LOCKS:
             _USER_ENTRY_LOCKS[self.user.id] = GeventSemaphore(1)
         self._entry_lock              = _USER_ENTRY_LOCKS[self.user.id]
@@ -2272,7 +2247,6 @@ class TradingApplication:
                         self.token_refreshed_today = False
                         self._last_idle_date      = today_date
 
-                        # ── FIX 4 continued: reset loop-level entry guard on new day
                         self._entry_attempted         = False
                         self._last_entry_attempt_date = today_date
                         self.logger.info(
@@ -2442,11 +2416,6 @@ class TradingApplication:
 
                         else:
                             # ── ENTRY LOGIC ───────────────────────────────────
-                            # The DB gate inside enter() (select_for_update on
-                            # entry_attempted_date) is the single authoritative
-                            # guard. It is coroutine-safe under gevent because
-                            # Django's DB lock serialises concurrent coroutines
-                            # at the database level — no in-memory semaphore needed.
                             if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
 
                                 # Fast pre-checks before hitting the DB
@@ -2486,7 +2455,6 @@ class TradingApplication:
                                         "trace": traceback.format_exc()
                                     })
                                     time.sleep(180)
-
 
                     # ── INSTRUMENTS NOT LOADED DURING MARKET HOURS ────────
                     elif (self.engine.instruments is None and
