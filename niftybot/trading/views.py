@@ -767,21 +767,21 @@ def connect_zerodha(request):
     return redirect('broker')
 
 
-@login_required
+
 def public_pnl_overview(request):
     return render(request, 'front/pnl.html')
 
 
-@login_required
+
 def public_algorithms(request):
     return render(request, 'front/algo.html')
 
 
-@login_required
+
 def public_brokers(request):
     return render(request, 'front/brok.html')
 
 
-@login_required
+
 def public_about(request):
     return render(request, 'front/about.html')
