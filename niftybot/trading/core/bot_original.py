@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(9, 21, 0)
-    ENTRY_END                        = dtime(9, 22, 59)          # 60-second window
+    ENTRY_START                      = dtime(13, 29, 0)
+    ENTRY_END                        = dtime(13, 30, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -71,7 +71,7 @@ class Config:
     MAX_TOKEN_ATTEMPTS               = 10
     MAX_RETRIES                      = 3
     RETRY_DELAY                      = 2
-    ORDER_TIMEOUT                    = 10
+    ORDER_TIMEOUT                    = 35
     PNL_CHECK_INTERVAL_SECONDS       = 1
     MIN_HOLD_SECONDS_FOR_PROFIT      = 1800
     HEARTBEAT_INTERVAL               = 5
