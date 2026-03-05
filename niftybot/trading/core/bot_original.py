@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(13, 29, 0)
-    ENTRY_END                        = dtime(13, 30, 59)          # 60-second window
+    ENTRY_START                      = dtime(13, 58, 0)
+    ENTRY_END                        = dtime(13, 59, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -234,11 +234,34 @@ class DBState:
             self.save()
 
     def full_reset(self):
-        # Use DEFAULT_STATE — single source of truth, no duplication
+        # ── FIX: Preserve single-entry-per-day guards across full_reset.
+        #
+        # Previously, full_reset() blindly reset ALL keys to DEFAULT_STATE values,
+        # including trade_taken_today → False. This meant that after an exit(),
+        # if the bot was still running within the entry window, trade_taken_today
+        # would be False again and the in-memory fast-path check in the main loop
+        # would pass, causing enter() to be called a second time that same day.
+        #
+        # The DB-level guard (entry_attempted_date) would catch it, but only after
+        # a select_for_update() round-trip. By also preserving trade_taken_today
+        # here, we prevent the unnecessary DB hit AND close the race window.
+        was_taken_today = self.data.get("trade_taken_today", False)
+        last_reset      = self.data.get("last_reset")
+
+        # Reset all fields to defaults, preserving only the fields that
+        # should survive a full_reset (last_reset and last_spot were already
+        # excluded in the original code).
         for k, v in DEFAULT_STATE.items():
-            # Preserve daily tracking fields that should survive a full_reset
             if k not in ("last_reset", "last_spot"):
                 self.data[k] = v
+
+        # ── Re-apply today's entry guards so a post-exit full_reset cannot
+        #    unlock the entry window for the remainder of the same trading day.
+        if was_taken_today:
+            self.data["trade_taken_today"] = True
+        if last_reset:
+            self.data["last_reset"] = last_reset
+
         self.save()
         # Do NOT clear entry_attempted_date here — prevents same-day re-entry.
         # Cleared by daily_reset() on the next calendar day.
@@ -1341,6 +1364,17 @@ class Engine:
         # today. All slow work (API calls, order placement, sleeps) happens here.
         # =====================================================================
 
+        # ── FIX: Belt-and-suspenders check — re-read trade_taken_today from state
+        #    after the DB gate passes. full_reset() now preserves this flag when
+        #    True, but this guard catches any future edge case where state and
+        #    DB lock could theoretically diverge (e.g. mid-day crash + recovery).
+        if self.state.data.get("trade_taken_today"):
+            self.logger.critical(
+                "DUPLICATE ENTRY BLOCKED — trade_taken_today=True in state after DB gate",
+                {"date": str(today)}
+            )
+            return False
+
         # In-memory fast-path flag so the loop skips without a DB hit each tick.
         self.state.data["trade_taken_today"] = True
         self.state.save()
@@ -2426,7 +2460,10 @@ class TradingApplication:
 
                                 if self.engine.state.data.get("trade_taken_today"):
                                     # In-memory fast path: DB gate already fired,
-                                    # state persisted — skip without another DB hit
+                                    # state persisted — skip without another DB hit.
+                                    # After the full_reset() fix, this flag is preserved
+                                    # across exits so this fast-path reliably prevents
+                                    # re-entry for the remainder of the trading day.
                                     time.sleep(5)
                                     continue
 
