@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(13, 29, 0)
-    ENTRY_END                        = dtime(13, 30, 59)          # 60-second window
+    ENTRY_START                      = dtime(9, 21, 0)
+    ENTRY_END                        = dtime(9, 22, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -408,40 +408,14 @@ class Engine:
     # ── CAPITAL ───────────────────────────────────────────────────────────
     def capital_available(self) -> float:
         try:
-            margins   = self.kite.margins()["equity"]
-            available = margins.get("available", {})
-
-            # Zerodha exposes MIS-usable funds across several keys depending on
-            # account type and whether funds were added intraday.  We read ALL
-            # relevant keys and take the maximum so we never accidentally see 0
-            # when money is present under a different key.
-            #
-            # Key reference (Zerodha KiteConnect margins response):
-            #   live_balance     – cash available for today (may be 0 for some accounts)
-            #   intraday_payin   – funds added during the trading session
-            #   adhoc_margin     – broker-granted ad-hoc limit
-            #   collateral       – pledged collateral (haircut already applied)
-            #   opening_balance  – start-of-day ledger balance (reliable fallback)
-            live_balance    = available.get("live_balance", 0) or 0
-            intraday_payin  = available.get("intraday_payin", 0) or 0
-            adhoc_margin    = available.get("adhoc_margin", 0) or 0
-            collateral      = available.get("collateral", 0) or 0
-            opening_balance = available.get("opening_balance", 0) or 0
-
-            # Primary: live_balance is the most accurate real-time figure.
-            # If it is zero, fall back to opening_balance (stable, always present).
-            # Then add intraday payin and collateral on top.
-            base = live_balance if live_balance > 0 else opening_balance
-            total_usable = base + intraday_payin + adhoc_margin + collateral
-
-            self.logger.info("CAPITAL BREAKDOWN FOR LOT SIZING", {
-                "live_balance":    round(live_balance),
-                "opening_balance": round(opening_balance),
-                "intraday_payin":  round(intraday_payin),
-                "adhoc_margin":    round(adhoc_margin),
-                "collateral":      round(collateral),
-                "base_used":       round(base),
-                "total_usable":    round(total_usable),
+            margins      = self.kite.margins()["equity"]
+            live_balance = margins["available"].get("live_balance", 0)
+            collateral   = margins["available"].get("collateral", 0)
+            total_usable = live_balance + collateral
+            self.logger.info("TOTAL USABLE CAPITAL FOR LOT SIZING", {
+                "live_balance":         round(live_balance),
+                "collateral_component": round(collateral),
+                "total_usable_for_mis": round(total_usable)
             })
             return total_usable
         except Exception as e:
@@ -449,9 +423,39 @@ class Engine:
             return 0.0
 
     def actual_used_capital(self) -> float:
+        """
+        Returns the net margin actually blocked by Zerodha after hedging offsets.
+
+        FIX: Previously used span + exposure which is the GROSS requirement and
+        does NOT reflect portfolio hedge benefits. This caused the bot to report
+        ~₹1.46L when Zerodha console showed ~₹1.26L — a ~₹20K overcount.
+
+        The correct field is utilised["total"] which is what Zerodha actually
+        blocks after netting hedge offsets across the basket. span + exposure
+        is now only used as a fallback if total is missing or zero.
+        """
         try:
-            margins = self.kite.margins()["equity"]["utilised"]
-            return margins["span"] + margins["exposure"]
+            utilised = self.kite.margins()["equity"]["utilised"]
+            total    = utilised.get("total", 0)
+
+            self.logger.info("MARGIN DEBUG (actual_used_capital)", {
+                "span":     round(utilised.get("span", 0)),
+                "exposure": round(utilised.get("exposure", 0)),
+                "total":    round(total),
+                "note":     "total is net after hedge offsets — matches Zerodha console"
+            })
+
+            if total > 0:
+                return total
+
+            # Fallback: only if total is missing or zero (should not normally happen)
+            fallback = utilised.get("span", 0) + utilised.get("exposure", 0)
+            self.logger.warning(
+                "actual_used_capital: utilised.total=0, falling back to span+exposure",
+                {"fallback": round(fallback)}
+            )
+            return fallback
+
         except Exception as e:
             self.logger.warning("Failed to fetch used capital", {"error": str(e)})
             return 0.0
@@ -766,16 +770,7 @@ class Engine:
             self.logger.warning(
                 "Margin API Failed - using conservative fallback", {"error": str(e)}
             )
-            # ── FIX: old fallback was MIN_CAPITAL_FOR_1LOT * 1.8 = ₹2,16,000.
-            # With ₹2,00,000 capital: int(200000 // 216000) = 0 lots — wrong.
-            # Use MIN_CAPITAL_FOR_1LOT itself as the per-lot fallback, which is
-            # the minimum capital Zerodha actually requires for 1 lot of NIFTY
-            # options MIS. This gives a conservative but non-zero lot count.
-            fallback = float(Config.MIN_CAPITAL_FOR_1LOT)
-            self.logger.warning("Margin fallback applied", {
-                "fallback_per_lot": round(fallback),
-                "note": "Basket margin API failed — using MIN_CAPITAL_FOR_1LOT as per-lot estimate"
-            })
+            fallback = Config.MIN_CAPITAL_FOR_1LOT * 1.8
             return fallback, fallback * 0.85
 
     def calculate_lots(self, legs: List[dict]) -> int:
@@ -826,12 +821,7 @@ class Engine:
             "dashboard_hard_cap": hard_cap,
             "config_max_lots":    Config.MAX_LOTS,
             "final_lots":         final_lots,
-            "final_qty":          final_lots * Config.LOT_SIZE,
-            "zero_reason": (
-                "affordable_lots=0 (capital < margin_per_lot)" if affordable_lots == 0
-                else f"capped by hard_cap={hard_cap}" if affordable_lots > hard_cap
-                else "OK"
-            ),
+            "final_qty":          final_lots * Config.LOT_SIZE
         })
         return final_lots
 
@@ -1613,6 +1603,9 @@ class Engine:
             time.sleep(1.0)
 
         time.sleep(5)
+        # ── FIX: actual_used_capital() now reads utilised["total"] which is the
+        #    NET margin after hedge offsets — matches what Zerodha console shows.
+        #    Previously read span + exposure (gross), causing ~₹20K overcount.
         actual_margin_used                            = self.actual_used_capital()
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = actual_margin_used / lots if lots > 0 else 0

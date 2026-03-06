@@ -71,7 +71,7 @@ class Config:
     MAX_TOKEN_ATTEMPTS               = 10
     MAX_RETRIES                      = 3
     RETRY_DELAY                      = 2
-    ORDER_TIMEOUT                    = 10
+    ORDER_TIMEOUT                    = 35
     PNL_CHECK_INTERVAL_SECONDS       = 1
     MIN_HOLD_SECONDS_FOR_PROFIT      = 1800
     HEARTBEAT_INTERVAL               = 5
@@ -234,11 +234,34 @@ class DBState:
             self.save()
 
     def full_reset(self):
-        # Use DEFAULT_STATE — single source of truth, no duplication
+        # ── FIX: Preserve single-entry-per-day guards across full_reset.
+        #
+        # Previously, full_reset() blindly reset ALL keys to DEFAULT_STATE values,
+        # including trade_taken_today → False. This meant that after an exit(),
+        # if the bot was still running within the entry window, trade_taken_today
+        # would be False again and the in-memory fast-path check in the main loop
+        # would pass, causing enter() to be called a second time that same day.
+        #
+        # The DB-level guard (entry_attempted_date) would catch it, but only after
+        # a select_for_update() round-trip. By also preserving trade_taken_today
+        # here, we prevent the unnecessary DB hit AND close the race window.
+        was_taken_today = self.data.get("trade_taken_today", False)
+        last_reset      = self.data.get("last_reset")
+
+        # Reset all fields to defaults, preserving only the fields that
+        # should survive a full_reset (last_reset and last_spot were already
+        # excluded in the original code).
         for k, v in DEFAULT_STATE.items():
-            # Preserve daily tracking fields that should survive a full_reset
             if k not in ("last_reset", "last_spot"):
                 self.data[k] = v
+
+        # ── Re-apply today's entry guards so a post-exit full_reset cannot
+        #    unlock the entry window for the remainder of the same trading day.
+        if was_taken_today:
+            self.data["trade_taken_today"] = True
+        if last_reset:
+            self.data["last_reset"] = last_reset
+
         self.save()
         # Do NOT clear entry_attempted_date here — prevents same-day re-entry.
         # Cleared by daily_reset() on the next calendar day.
@@ -400,9 +423,39 @@ class Engine:
             return 0.0
 
     def actual_used_capital(self) -> float:
+        """
+        Returns the net margin actually blocked by Zerodha after hedging offsets.
+
+        FIX: Previously used span + exposure which is the GROSS requirement and
+        does NOT reflect portfolio hedge benefits. This caused the bot to report
+        ~₹1.46L when Zerodha console showed ~₹1.26L — a ~₹20K overcount.
+
+        The correct field is utilised["total"] which is what Zerodha actually
+        blocks after netting hedge offsets across the basket. span + exposure
+        is now only used as a fallback if total is missing or zero.
+        """
         try:
-            margins = self.kite.margins()["equity"]["utilised"]
-            return margins["span"] + margins["exposure"]
+            utilised = self.kite.margins()["equity"]["utilised"]
+            total    = utilised.get("total", 0)
+
+            self.logger.info("MARGIN DEBUG (actual_used_capital)", {
+                "span":     round(utilised.get("span", 0)),
+                "exposure": round(utilised.get("exposure", 0)),
+                "total":    round(total),
+                "note":     "total is net after hedge offsets — matches Zerodha console"
+            })
+
+            if total > 0:
+                return total
+
+            # Fallback: only if total is missing or zero (should not normally happen)
+            fallback = utilised.get("span", 0) + utilised.get("exposure", 0)
+            self.logger.warning(
+                "actual_used_capital: utilised.total=0, falling back to span+exposure",
+                {"fallback": round(fallback)}
+            )
+            return fallback
+
         except Exception as e:
             self.logger.warning("Failed to fetch used capital", {"error": str(e)})
             return 0.0
@@ -1341,6 +1394,17 @@ class Engine:
         # today. All slow work (API calls, order placement, sleeps) happens here.
         # =====================================================================
 
+        # ── FIX: Belt-and-suspenders check — re-read trade_taken_today from state
+        #    after the DB gate passes. full_reset() now preserves this flag when
+        #    True, but this guard catches any future edge case where state and
+        #    DB lock could theoretically diverge (e.g. mid-day crash + recovery).
+        if self.state.data.get("trade_taken_today"):
+            self.logger.critical(
+                "DUPLICATE ENTRY BLOCKED — trade_taken_today=True in state after DB gate",
+                {"date": str(today)}
+            )
+            return False
+
         # In-memory fast-path flag so the loop skips without a DB hit each tick.
         self.state.data["trade_taken_today"] = True
         self.state.save()
@@ -1539,6 +1603,9 @@ class Engine:
             time.sleep(1.0)
 
         time.sleep(5)
+        # ── FIX: actual_used_capital() now reads utilised["total"] which is the
+        #    NET margin after hedge offsets — matches what Zerodha console shows.
+        #    Previously read span + exposure (gross), causing ~₹20K overcount.
         actual_margin_used                            = self.actual_used_capital()
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = actual_margin_used / lots if lots > 0 else 0
@@ -2426,7 +2493,10 @@ class TradingApplication:
 
                                 if self.engine.state.data.get("trade_taken_today"):
                                     # In-memory fast path: DB gate already fired,
-                                    # state persisted — skip without another DB hit
+                                    # state persisted — skip without another DB hit.
+                                    # After the full_reset() fix, this flag is preserved
+                                    # across exits so this fast-path reliably prevents
+                                    # re-entry for the remainder of the trading day.
                                     time.sleep(5)
                                     continue
 

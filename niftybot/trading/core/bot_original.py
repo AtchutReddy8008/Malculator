@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(10, 46, 0)
-    ENTRY_END                        = dtime(10, 47, 59)          # 60-second window
+    ENTRY_START                      = dtime(11, 40, 0)
+    ENTRY_END                        = dtime(11, 41, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -426,34 +426,95 @@ class Engine:
         """
         Returns the net margin actually blocked by Zerodha after hedging offsets.
 
-        FIX: Previously used span + exposure which is the GROSS requirement and
-        does NOT reflect portfolio hedge benefits. This caused the bot to report
-        ~₹1.46L when Zerodha console showed ~₹1.26L — a ~₹20K overcount.
+        ── DEBUG MODE ────────────────────────────────────────────────────────
+        We dump the FULL raw margin API response so you can see every field
+        and identify which one matches the Zerodha console value (₹1.27L).
 
-        The correct field is utilised["total"] which is what Zerodha actually
-        blocks after netting hedge offsets across the basket. span + exposure
-        is now only used as a fallback if total is missing or zero.
+        Once you paste the log output, we will hard-code the correct field and
+        remove the debug dump.
+
+        Previous attempts tried:
+          - span + exposure  → returned ₹1.46L (gross, ignores hedge netting)
+          - utilised.total   → returned ₹1.43L (still too high)
+
+        The correct field is somewhere in the response below.
+        ── END DEBUG ─────────────────────────────────────────────────────────
         """
         try:
-            utilised = self.kite.margins()["equity"]["utilised"]
-            total    = utilised.get("total", 0)
+            full_margins = self.kite.margins()
 
-            self.logger.info("MARGIN DEBUG (actual_used_capital)", {
-                "span":     round(utilised.get("span", 0)),
-                "exposure": round(utilised.get("exposure", 0)),
-                "total":    round(total),
-                "note":     "total is net after hedge offsets — matches Zerodha console"
+            # ── FULL RAW DUMP — paste this log output so we can find the right field ──
+            self.logger.info("RAW_MARGIN_FULL_DUMP", {
+                "full_response": make_json_safe(full_margins)
             })
 
+            eq       = full_margins["equity"]
+            utilised = eq.get("utilised", {})
+            available = eq.get("available", {})
+
+            # ── Log every candidate field individually ──────────────────────────────
+            span             = utilised.get("span", 0)
+            exposure         = utilised.get("exposure", 0)
+            total            = utilised.get("total", 0)
+            debits           = utilised.get("debits", 0)
+            m2m_realised     = utilised.get("m2m_realised", 0)
+            m2m_unrealised   = utilised.get("m2m_unrealised", 0)
+            option_premium   = utilised.get("option_premium", 0)
+            holding_sales    = utilised.get("holding_sales", 0)
+            turnover         = utilised.get("turnover", 0)
+            pnl              = utilised.get("pnl", {})
+            pnl_realised     = pnl.get("realised", 0) if isinstance(pnl, dict) else 0
+            pnl_unrealised   = pnl.get("unrealised", 0) if isinstance(pnl, dict) else 0
+            live_balance     = available.get("live_balance", 0)
+            collateral       = available.get("collateral", 0)
+            intraday_payin   = available.get("intraday_payin", 0)
+            adhoc_margin     = available.get("adhoc_margin", 0)
+            eq_net           = eq.get("net", 0)
+
+            self.logger.info("MARGIN_CANDIDATES_BREAKDOWN", {
+                "utilised.span":                round(span),
+                "utilised.exposure":            round(exposure),
+                "utilised.span+exposure":       round(span + exposure),
+                "utilised.total":               round(total),
+                "utilised.debits":              round(debits),
+                "utilised.m2m_realised":        round(m2m_realised),
+                "utilised.m2m_unrealised":      round(m2m_unrealised),
+                "utilised.option_premium":      round(option_premium),
+                "utilised.holding_sales":       round(holding_sales),
+                "utilised.turnover":            round(turnover),
+                "utilised.pnl.realised":        round(pnl_realised),
+                "utilised.pnl.unrealised":      round(pnl_unrealised),
+                "available.live_balance":       round(live_balance),
+                "available.collateral":         round(collateral),
+                "available.intraday_payin":     round(intraday_payin),
+                "available.adhoc_margin":       round(adhoc_margin),
+                "equity.net":                   round(eq_net),
+                "span+exposure-option_premium": round(span + exposure - option_premium),
+                "debits-option_premium":        round(debits - option_premium),
+                "NOTE": "Find which value == Zerodha console margin used (₹1.27L)"
+            })
+
+            # ── CURRENT BEST GUESS: use debits which often equals net blocked ──────
+            # debits = span + exposure + m2m unrealised (net of all obligations)
+            # If this is still wrong, check the log above and tell us which field = 1.27L
+            if debits > 0:
+                self.logger.info("actual_used_capital returning debits", {
+                    "debits": round(debits),
+                    "note":   "Change this if debits != Zerodha console value"
+                })
+                return debits
+
+            # Fallback chain: total → span+exposure
             if total > 0:
+                self.logger.warning("actual_used_capital: debits=0, falling back to total", {
+                    "total": round(total)
+                })
                 return total
 
-            # Fallback: only if total is missing or zero (should not normally happen)
-            fallback = utilised.get("span", 0) + utilised.get("exposure", 0)
-            self.logger.warning(
-                "actual_used_capital: utilised.total=0, falling back to span+exposure",
-                {"fallback": round(fallback)}
-            )
+            fallback = span + exposure
+            self.logger.warning("actual_used_capital: total=0, falling back to span+exposure", {
+                "span_plus_exposure": round(fallback)
+            })
             return fallback
 
         except Exception as e:
@@ -1603,9 +1664,6 @@ class Engine:
             time.sleep(1.0)
 
         time.sleep(5)
-        # ── FIX: actual_used_capital() now reads utilised["total"] which is the
-        #    NET margin after hedge offsets — matches what Zerodha console shows.
-        #    Previously read span + exposure (gross), causing ~₹20K overcount.
         actual_margin_used                            = self.actual_used_capital()
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = actual_margin_used / lots if lots > 0 else 0
