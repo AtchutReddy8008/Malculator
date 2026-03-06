@@ -423,39 +423,9 @@ class Engine:
             return 0.0
 
     def actual_used_capital(self) -> float:
-        """
-        Returns the net margin actually blocked by Zerodha after hedging offsets.
-
-        FIX: Previously used span + exposure which is the GROSS requirement and
-        does NOT reflect portfolio hedge benefits. This caused the bot to report
-        ~₹1.46L when Zerodha console showed ~₹1.26L — a ~₹20K overcount.
-
-        The correct field is utilised["total"] which is what Zerodha actually
-        blocks after netting hedge offsets across the basket. span + exposure
-        is now only used as a fallback if total is missing or zero.
-        """
         try:
-            utilised = self.kite.margins()["equity"]["utilised"]
-            total    = utilised.get("total", 0)
-
-            self.logger.info("MARGIN DEBUG (actual_used_capital)", {
-                "span":     round(utilised.get("span", 0)),
-                "exposure": round(utilised.get("exposure", 0)),
-                "total":    round(total),
-                "note":     "total is net after hedge offsets — matches Zerodha console"
-            })
-
-            if total > 0:
-                return total
-
-            # Fallback: only if total is missing or zero (should not normally happen)
-            fallback = utilised.get("span", 0) + utilised.get("exposure", 0)
-            self.logger.warning(
-                "actual_used_capital: utilised.total=0, falling back to span+exposure",
-                {"fallback": round(fallback)}
-            )
-            return fallback
-
+            margins = self.kite.margins()["equity"]["utilised"]
+            return margins["span"] + margins["exposure"]
         except Exception as e:
             self.logger.warning("Failed to fetch used capital", {"error": str(e)})
             return 0.0
@@ -1603,9 +1573,6 @@ class Engine:
             time.sleep(1.0)
 
         time.sleep(5)
-        # ── FIX: actual_used_capital() now reads utilised["total"] which is the
-        #    NET margin after hedge offsets — matches what Zerodha console shows.
-        #    Previously read span + exposure (gross), causing ~₹20K overcount.
         actual_margin_used                            = self.actual_used_capital()
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = actual_margin_used / lots if lots > 0 else 0

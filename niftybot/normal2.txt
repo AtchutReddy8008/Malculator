@@ -13,7 +13,7 @@ print("qty:", bs.state_json.get('qty'))
 # ---------------------------------------------------------------------
 from trading.models import BotStatus, User
 
-user = User.objects.get(username='tradewithnaman')
+user = User.objects.get(username='balaji')
 bs = BotStatus.objects.get(user=user)
 
 # Optional safety check
@@ -37,17 +37,86 @@ bs.state_json = state
 bs.save()
 
 print("Reset complete! Bot can now attempt new entry today.")
+----*-------*----------------*---------
+from trading.models import BotStatus
+from django.contrib.auth.models import User
+from datetime import date
+
+# Get user
+user = User.objects.get(username='balaji')
+
+# Get bot status
+bs = BotStatus.objects.get(user=user)
+
+print("\n===== BOT RESET TOOL =====")
+print(f"User: {user.username}")
+print(f"Entry Attempted Date: {bs.entry_attempted_date}")
+print(f"Last Successful Entry: {bs.last_successful_entry}")
+print(f"State JSON: {bs.state_json}")
+print("==========================\n")
+
+# Safety check if trade still active
+state = bs.state_json or {}
+
+if state.get('trade_active', False):
+    print("⚠ WARNING: trade_active is still True! A position may still be open.")
+    confirm = input("Continue reset anyway? (yes/no): ").strip().lower()
+
+    if confirm != "yes":
+        print("❌ Reset cancelled.")
+        exit()
+
+print("\nResetting bot state...\n")
+
+# Reset DB entry locks
+bs.entry_attempted_date = None
+bs.last_successful_entry = None
+
+# Reset state flags
+state.update({
+    "trade_taken_today": False,
+    "trade_active": False,
+    "adjustments_done": 0,
+    "ce_adjustments": 0,
+    "pe_adjustments": 0
+})
+
+bs.state_json = state
+
+# Save changes
+bs.save()
+
+print("✅ Reset complete!")
+print("Bot can now attempt a new entry today.\n")
+
+print("Updated Bot Status:")
+print(f"Entry Attempted Date: {bs.entry_attempted_date}")
+print(f"Last Successful Entry: {bs.last_successful_entry}")
+print(f"State JSON: {bs.state_json}")
+print("\n===== RESET FINISHED =====")
 ------------------------------------------------------------------------------------------------
 from trading.models import Trade, DailyPnL
 from django.contrib.auth.models import User
+from datetime import date
 
 user = User.objects.get(username='balaji')
 
 # See closed trades today
-print(Trade.objects.filter(user=user, status='CLOSED', exit_time__date=date.today()).values('symbol', 'pnl'))
+print(
+    Trade.objects.filter(
+        user=user,
+        status='CLOSED',
+        exit_time__date=date.today()
+    ).values('symbol', 'pnl')
+)
 
 # See today's DailyPnL
-print(DailyPnL.objects.filter(user=user, date=date.today()).values('pnl', 'total_trades'))
+print(
+    DailyPnL.objects.filter(
+        user=user,
+        date=date.today()
+    ).values('pnl', 'total_trades')
+)
 -----------------------------------------------------------------------------------------------
 from trading.views import calculate_overall_day_win_rate
 from django.contrib.auth.models import User

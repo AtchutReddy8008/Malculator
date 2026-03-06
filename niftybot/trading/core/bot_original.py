@@ -45,8 +45,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(9, 41, 0)
-    ENTRY_END                        = dtime(9, 42, 59)          # 60-second window
+    ENTRY_START                      = dtime(10, 46, 0)
+    ENTRY_END                        = dtime(10, 47, 59)          # 60-second window
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -77,11 +77,6 @@ class Config:
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
     PERIODIC_PNL_SNAPSHOT_INTERVAL   = 30
-    # FIX: How long to wait after entry before reading actual margin from Zerodha.
-    # Zerodha's margin engine needs ~15s to fully net hedge benefit across all legs.
-    # Reading too early (8-12s) catches an intermediate state where shorts are
-    # booked but hedge credit isn't fully applied yet, inflating the figure.
-    POST_ENTRY_MARGIN_READ_DELAY     = 15
 
 
 INDIA_HOLIDAYS     = holidays.India()
@@ -429,39 +424,38 @@ class Engine:
 
     def actual_used_capital(self) -> float:
         """
-        FIX: Previously read span + exposure which is the GROSS margin before
-        Zerodha applies hedge benefit. This always inflated the figure compared
-        to what Zerodha UI shows.
+        Returns the net margin actually blocked by Zerodha after hedging offsets.
 
-        Zerodha's UI shows utilised['total'] which is the NET margin after hedge
-        credit is applied. We now read that field first and only fall back to
-        span + exposure if 'total' is missing or zero (older API versions).
+        FIX: Previously used span + exposure which is the GROSS requirement and
+        does NOT reflect portfolio hedge benefits. This caused the bot to report
+        ~₹1.46L when Zerodha console showed ~₹1.26L — a ~₹20K overcount.
 
-        This closes the ~0.20L gap between bot-reported margin and Zerodha UI.
+        The correct field is utilised["total"] which is what Zerodha actually
+        blocks after netting hedge offsets across the basket. span + exposure
+        is now only used as a fallback if total is missing or zero.
         """
         try:
-            margins = self.kite.margins()["equity"]["utilised"]
+            utilised = self.kite.margins()["equity"]["utilised"]
+            total    = utilised.get("total", 0)
 
-            # 'total' is the net figure Zerodha UI displays — hedge benefit already deducted
-            total = margins.get("total", 0)
-            if total and total > 0:
-                self.logger.info("actual_used_capital: using utilised.total (net, hedge-adjusted)", {
-                    "total":    round(total),
-                    "span":     round(margins.get("span", 0)),
-                    "exposure": round(margins.get("exposure", 0)),
-                })
-                return float(total)
+            self.logger.info("MARGIN DEBUG (actual_used_capital)", {
+                "span":     round(utilised.get("span", 0)),
+                "exposure": round(utilised.get("exposure", 0)),
+                "total":    round(total),
+                "note":     "total is net after hedge offsets — matches Zerodha console"
+            })
 
-            # Fallback for older Zerodha API responses that lack 'total'
-            gross = margins.get("span", 0) + margins.get("exposure", 0)
+            if total > 0:
+                return total
+
+            # Fallback: only if total is missing or zero (should not normally happen)
+            fallback = utilised.get("span", 0) + utilised.get("exposure", 0)
             self.logger.warning(
-                "actual_used_capital: utilised.total missing — falling back to span+exposure", {
-                    "span":     round(margins.get("span", 0)),
-                    "exposure": round(margins.get("exposure", 0)),
-                    "gross":    round(gross),
-                }
+                "actual_used_capital: utilised.total=0, falling back to span+exposure",
+                {"fallback": round(fallback)}
             )
-            return float(gross)
+            return fallback
+
         except Exception as e:
             self.logger.warning("Failed to fetch used capital", {"error": str(e)})
             return 0.0
@@ -1142,60 +1136,17 @@ class Engine:
                 "remaining_days": remaining_days,
             })
         else:
-            # FIX: Use actual post-entry margin (utilised.total — hedge adjusted) rather
-            # than the pre-trade basket_order_margins estimate stored in final_margin_used.
-            # actual_used_capital() now reads utilised['total'] which matches Zerodha UI,
-            # giving a more accurate base for the 2% target calculation.
-            actual_margin = self.actual_used_capital()
-            margin_for_target = self.state.data.get("exact_margin_used_by_trade", 0.0)
-
-            # Prefer the live figure if it looks valid (> 0 and within 20% of stored)
-            if actual_margin > 0:
-                stored = margin_for_target or 0
-                if stored > 0:
-                    ratio = actual_margin / stored
-                    if 0.80 <= ratio <= 1.20:
-                        # Live figure is consistent with what we stored — use live
-                        margin_for_target = actual_margin
-                        self.logger.info(
-                            "High VIX target: using live actual_used_capital (consistent with stored)", {
-                                "live_margin":   round(actual_margin),
-                                "stored_margin": round(stored),
-                                "ratio":         round(ratio, 3),
-                            }
-                        )
-                    else:
-                        # Large divergence — trust stored value from post-entry read
-                        self.logger.warning(
-                            "High VIX target: live margin diverges >20% from stored — using stored", {
-                                "live_margin":   round(actual_margin),
-                                "stored_margin": round(stored),
-                                "ratio":         round(ratio, 3),
-                            }
-                        )
-                else:
-                    margin_for_target = actual_margin
-                    self.logger.info(
-                        "High VIX target: no stored margin — using live actual_used_capital", {
-                            "live_margin": round(actual_margin),
-                        }
-                    )
-            elif margin_for_target <= 0:
-                # Last resort: fall back to pre-trade basket estimate
-                margin_for_target = self.state.data.get("final_margin_used", 0.0)
+            margin_for_target = self.state.data.get("final_margin_used", 0.0)
+            if margin_for_target <= 0:
+                margin_for_target = self.actual_used_capital()
                 self.logger.warning(
-                    "High VIX target: both live and stored margins unavailable — "
-                    "falling back to basket_order_margins estimate", {
-                        "final_margin_used": round(margin_for_target),
-                    }
+                    "final_margin_used not available → fallback to actual used capital"
                 )
-
             today_target = margin_for_target * Config.PERCENT_TARGET_WHEN_VIX_HIGH
-            self.logger.info("High VIX mode - using 2.0% of actual margin", {
-                "entry_vix":      round(entry_vix, 2),
-                "margin_used":    round(margin_for_target),
+            self.logger.info("High VIX mode - using 2.0% of final_margin", {
+                "entry_vix":    round(entry_vix, 2),
+                "final_margin": round(margin_for_target),
             })
-
         today_target *= 0.97
         today_target  = round(today_target)
         self.logger.info(
@@ -1639,28 +1590,25 @@ class Engine:
             self.state.data.setdefault("bot_order_ids", []).append(order_id)
 
         # ── POST-ENTRY STATE ──────────────────────────────────────────────
-        # FIX: Wait POST_ENTRY_MARGIN_READ_DELAY seconds (default 15s) before
-        # reading actual margin. Zerodha's margin engine needs time to fully net
-        # the hedge benefit across all legs. Reading at 8-12s (old behaviour)
-        # catches an intermediate state where shorts are booked but hedge credit
-        # isn't fully applied yet, inflating the margin figure vs Zerodha UI.
-        self.logger.info(
-            f"Waiting {Config.POST_ENTRY_MARGIN_READ_DELAY}s for Zerodha to settle "
-            f"hedge margin netting before reading actual_used_capital..."
-        )
-        time.sleep(Config.POST_ENTRY_MARGIN_READ_DELAY)
+        time.sleep(3.0)
 
+        margin_samples = []
+        for _ in range(4):
+            try:
+                avail = self.capital_available()
+                if avail > 0:
+                    margin_samples.append(avail)
+            except Exception:
+                pass
+            time.sleep(1.0)
+
+        time.sleep(5)
+        # ── FIX: actual_used_capital() now reads utilised["total"] which is the
+        #    NET margin after hedge offsets — matches what Zerodha console shows.
+        #    Previously read span + exposure (gross), causing ~₹20K overcount.
         actual_margin_used                            = self.actual_used_capital()
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = actual_margin_used / lots if lots > 0 else 0
-
-        self.logger.info("POST-ENTRY MARGIN READ (hedge-adjusted)", {
-            "actual_margin_used_₹": round(actual_margin_used),
-            "lots":                 lots,
-            "margin_per_lot_₹":     round(margin_per_lot),
-            "pre_trade_estimate_₹": round(final_margin),
-            "difference_₹":         round(actual_margin_used - final_margin),
-        })
 
         trade_symbols = [
             s for s in [ce_short_sym, pe_short_sym, ce_hedge_sym, pe_hedge_sym] if s
