@@ -59,7 +59,7 @@ class Config:
     VIX_EXIT_ABS                     = 18.0
     VIX_SPIKE_MULTIPLIER             = 1.20
     VIX_MIN                          = 7.0
-    VIX_MAX                          = 20.0
+    VIX_MAX                          = 30.0
     VIX_THRESHOLD_FOR_PERCENT_TARGET = 12
     PERCENT_TARGET_WHEN_VIX_HIGH     = 0.020
     ADJUSTMENT_TRIGGER_POINTS        = 50
