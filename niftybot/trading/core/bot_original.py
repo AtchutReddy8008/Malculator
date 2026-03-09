@@ -20,12 +20,6 @@ from decimal import Decimal
 from kiteconnect.exceptions import TokenException
 
 # ── Gevent-safe lock ──────────────────────────────────────────────────────────
-# With --pool=gevent --concurrency=20, all 20 coroutines share the same process
-# memory. A plain bool flag (_entry_attempted) is NOT coroutine-safe because
-# gevent can switch coroutines between the flag check and the flag set.
-# We use gevent.lock.BoundedSemaphore(1) which is coroutine-safe: only one
-# coroutine can hold it at a time. If gevent is not installed, we fall back to
-# a plain threading.Lock (safe for thread pools / prefork workers).
 try:
     from gevent.lock import BoundedSemaphore as GeventSemaphore
     _GEVENT_AVAILABLE = True
@@ -33,8 +27,6 @@ except ImportError:
     from threading import Lock as GeventSemaphore
     _GEVENT_AVAILABLE = False
 
-# One lock per user_id — created on first bot start, reused on restarts.
-# Stored at module level so it survives TradingApplication re-instantiation.
 _USER_ENTRY_LOCKS: Dict[int, object] = {}
 
 
@@ -45,8 +37,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(9, 21, 0)
-    ENTRY_END                        = dtime(9, 22, 59)          # 60-second window
+    ENTRY_START                      = dtime(9, 56, 0)
+    ENTRY_END                        = dtime(9, 57, 59)
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -56,8 +48,6 @@ class Config:
     MAX_CAPITAL_USAGE                = 1.0
     MIN_CAPITAL_FOR_1LOT             = 120000
     MAX_LOTS                         = 50
-    VIX_EXIT_ABS                     = 18.0
-    VIX_SPIKE_MULTIPLIER             = 1.20
     VIX_MIN                          = 7.0
     VIX_MAX                          = 30.0
     VIX_THRESHOLD_FOR_PERCENT_TARGET = 12
@@ -67,13 +57,12 @@ class Config:
     MAX_ADJUSTMENTS_PER_SIDE_PER_DAY = 1
     MIN_HEDGE_GAP                    = 300
     TIMEZONE                         = pytz.timezone("Asia/Kolkata")
-    EMERGENCY_STOP_FILE              = "EMERGENCY_STOP.txt"
     MAX_TOKEN_ATTEMPTS               = 10
     MAX_RETRIES                      = 3
     RETRY_DELAY                      = 2
     ORDER_TIMEOUT                    = 35
     PNL_CHECK_INTERVAL_SECONDS       = 1
-    MIN_HOLD_SECONDS_FOR_PROFIT      = 1800
+    MIN_HOLD_SECONDS_FOR_PROFIT      = 300   # 5 minutes (was 1800 — reduced to prevent missing target)
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
     PERIODIC_PNL_SNAPSHOT_INTERVAL   = 30
@@ -131,8 +120,6 @@ class DBLogger:
     def critical(self, msg: str, details: dict = None):
         self._write("CRITICAL", msg, details)
 
-    # trade() only logs to LogEntry — does NOT create Trade records.
-    # Trade record creation is handled exclusively by _get_or_create_trade().
     def trade(self, action: str, symbol="", qty=0, price=0.0, comment=""):
         self.info(f"ORDER FILLED: {action} {symbol} qty={qty} @ {price}", {
             'action':   action,
@@ -229,7 +216,6 @@ class DBState:
             self.save()
 
     def full_reset(self):
-        # ── FIX: Preserve single-entry-per-day guards across full_reset.
         was_taken_today = self.data.get("trade_taken_today", False)
         last_reset      = self.data.get("last_reset")
 
@@ -243,8 +229,6 @@ class DBState:
             self.data["last_reset"] = last_reset
 
         self.save()
-        # Do NOT clear entry_attempted_date here — prevents same-day re-entry.
-        # Cleared by daily_reset() on the next calendar day.
 
 
 # ===================== HELPER =====================
@@ -313,15 +297,9 @@ class Engine:
 
     # ── TRADE RECORD HELPERS ──────────────────────────────────────────────
     def _get_or_create_trade(self, symbol, side, qty, price, order_id=None):
-        """
-        Single authoritative method for creating/finding a Trade DB record.
-        Called ONLY from order() and order_basket() after a fill is confirmed.
-        logger.trade() no longer creates Trade records — it only logs to LogEntry.
-        """
         direction   = 'SHORT' if side == 'SELL' else 'LONG'
         option_type = 'CE' if 'CE' in symbol else 'PE' if 'PE' in symbol else None
 
-        # Primary match: by order_id (unique, most reliable)
         if order_id:
             existing = Trade.objects.filter(
                 user=self.user,
@@ -330,7 +308,6 @@ class Engine:
             if existing:
                 return existing
 
-        # Secondary match: open record for same symbol with no exit
         existing = Trade.objects.filter(
             user=self.user,
             symbol=symbol,
@@ -341,7 +318,6 @@ class Engine:
         if existing:
             return existing
 
-        # Create new record — this is the ONLY place Trade records are created
         trade_id = f"{self.user.id}_{int(time.time())}_{symbol}"
         trade = Trade.objects.create(
             user=self.user,
@@ -365,7 +341,6 @@ class Engine:
         return trade
 
     def _close_trade_record(self, symbol, exit_price):
-        """Close an open Trade record by symbol."""
         try:
             trade = Trade.objects.filter(
                 user=self.user,
@@ -403,26 +378,6 @@ class Engine:
             return 0.0
 
     def actual_used_capital(self) -> float:
-        """
-        Returns the net margin actually blocked by Zerodha after hedging offsets.
-
-        ── FIX: margin field selection ───────────────────────────────────────
-        Zerodha's margin API has multiple fields. The correct one to use for
-        "what is actually blocked" is determined by running the debug version
-        (file 3) for one session and checking which field matches the Zerodha
-        console value exactly.
-
-        Priority order we use:
-          1. utilised["total"]  — net margin after hedge offsets (most accurate)
-          2. utilised["span"] + utilised["exposure"]  — gross fallback
-          3. 0.0  — if API call fails
-
-        If utilised["total"] still doesn't match your Zerodha console:
-          - Run the debug version one day
-          - Check MARGIN_CANDIDATES_BREAKDOWN in logs
-          - Replace `total` below with whichever field matched exactly
-        ── END FIX ───────────────────────────────────────────────────────────
-        """
         try:
             full_margins = self.kite.margins()
             eq           = full_margins["equity"]
@@ -440,13 +395,9 @@ class Engine:
                 "returning":          round(total) if total > 0 else round(span + exposure),
             })
 
-            # utilised["total"] is the net figure after hedge offsets and is
-            # what Zerodha console shows as "margin used". Use it if non-zero.
             if total > 0:
                 return total
 
-            # Fallback: span + exposure (gross, ignores hedge netting — will be
-            # slightly higher than console, but safe for emergency situations)
             fallback = span + exposure
             self.logger.warning(
                 "actual_used_capital: utilised.total=0, falling back to span+exposure",
@@ -714,7 +665,6 @@ class Engine:
                 })
             return best_strike
 
-        # Fallback: first strike with any positive premium
         fallback_strike = None
         candidates = sorted(df["strike"].unique().tolist()) if cp == "CE" \
                      else sorted(df["strike"].unique().tolist(), reverse=True)
@@ -772,7 +722,6 @@ class Engine:
             return fallback, fallback * 0.85
 
     def calculate_lots(self, legs: List[dict]) -> int:
-        # Step 1: Read hard cap from dashboard
         try:
             hard_cap = int(self.state.bot_status.max_lots_hard_cap)
             if hard_cap < 1:
@@ -784,7 +733,6 @@ class Engine:
             "max_lots_hard_cap": hard_cap
         })
 
-        # Step 2: Check minimum capital
         capital = self.capital_available()
         if capital < Config.MIN_CAPITAL_FOR_1LOT:
             self.logger.warning("Capital too low for even 1 lot", {
@@ -793,7 +741,6 @@ class Engine:
             })
             return 0
 
-        # Step 3: Get margin for 1 lot from basket API
         try:
             one_lot_legs           = [dict(l, quantity=Config.LOT_SIZE) for l in legs]
             initial_margin_1lot, _ = self.exact_margin_for_basket(one_lot_legs)
@@ -805,10 +752,7 @@ class Engine:
             self.logger.error("Margin API returned 0 — cannot size lots safely")
             return 0
 
-        # Step 4: How many lots can capital afford?
         affordable_lots = int((capital * Config.MAX_CAPITAL_USAGE) // initial_margin_1lot)
-
-        # Step 5: Apply all caps
         final_lots = min(affordable_lots, hard_cap, Config.MAX_LOTS)
         final_lots = max(final_lots, 0)
 
@@ -825,7 +769,6 @@ class Engine:
 
     # ── SINGLE ORDER ─────────────────────────────────────────────────────
     def order(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
-        """Place a single market order and wait for fill."""
         filled_price = 0.0
         for attempt in range(Config.MAX_RETRIES):
             try:
@@ -898,10 +841,6 @@ class Engine:
     def order_basket(
         self, legs: List[Tuple[str, str]], qty: int
     ) -> Tuple[bool, List[str], Dict[str, float]]:
-        """
-        Place multiple legs simultaneously using ThreadPoolExecutor.
-        Returns (success, order_ids_list, filled_prices_dict).
-        """
         order_ids     = []
         filled_prices = {}
 
@@ -909,7 +848,7 @@ class Engine:
             try:
                 order_ids     = []
                 filled_prices = {}
-                placed        = {}   # sym -> (side, order_id)
+                placed        = {}
 
                 self.logger.info(
                     f"PLACING BASKET attempt {attempt+1}/{Config.MAX_RETRIES}", {
@@ -919,7 +858,6 @@ class Engine:
                     }
                 )
 
-                # Fire all legs concurrently
                 futures_map = {}
                 with ThreadPoolExecutor(max_workers=len(legs)) as executor:
                     for sym, side in legs:
@@ -965,7 +903,6 @@ class Engine:
                                     )
                             raise place_err
 
-                # Poll all placed orders until COMPLETE
                 start_time = time.time()
                 pending    = dict(placed)
 
@@ -1039,7 +976,6 @@ class Engine:
         return False, [], {}
 
     def cleanup(self, executed: List[Tuple[str, str, str]], qty: int):
-        """Reverse already-filled legs on partial entry failure."""
         for sym, side, _ in executed:
             opp = "SELL" if side == "BUY" else "BUY"
             self.logger.critical(f"CLEANUP: reversing {side} on {sym}")
@@ -1337,9 +1273,6 @@ class Engine:
         now   = datetime.now(Config.TIMEZONE)
         today = now.date()
 
-        # =====================================================================
-        # PHASE 1: Atomic DB lock — held for < 100ms, no slow work inside.
-        # =====================================================================
         already_attempted = False
         try:
             with transaction.atomic():
@@ -1376,9 +1309,6 @@ class Engine:
             )
             return False
 
-        # =====================================================================
-        # PHASE 2: All slow work happens here after lock is released.
-        # =====================================================================
         if self.state.data.get("trade_taken_today"):
             self.logger.critical(
                 "DUPLICATE ENTRY BLOCKED — trade_taken_today=True in state after DB gate",
@@ -1396,7 +1326,6 @@ class Engine:
 
         self.state.daily_reset()
 
-        # ── VALIDATIONS ───────────────────────────────────────────────────
         is_ok, reason = self.is_trading_day()
         if not is_ok:
             self.logger.info("Non-trading day - skipping", {"reason": reason})
@@ -1436,7 +1365,6 @@ class Engine:
             self.logger.critical("Spot fetch failed — cannot enter")
             return False
 
-        # ── STRIKE SELECTION ──────────────────────────────────────────────
         atm_strike   = self.atm(spot)
         ce_short     = self.find_short_strike(atm_strike, "CE")
         pe_short     = self.find_short_strike(atm_strike, "PE")
@@ -1481,7 +1409,6 @@ class Engine:
         if not pe_hedge_sym:
             self.logger.critical("PE hedge symbol not found — proceeding without PE hedge")
 
-        # ── LOT SIZING ────────────────────────────────────────────────────
         legs = []
         if pe_hedge_sym:
             legs.append({
@@ -1516,8 +1443,6 @@ class Engine:
         capital_before = self.capital_available()
         self.logger.info("CAPITAL BEFORE ENTRY", {"available_Rs": round(capital_before)})
 
-        # ── ORDER EXECUTION ───────────────────────────────────────────────
-        # BUY hedges first, then SELL shorts
         buy_legs  = []
         sell_legs = []
         if pe_hedge_sym:
@@ -1536,7 +1461,6 @@ class Engine:
         executed     = []
         entry_prices = {}
 
-        # Step 1: BUY hedges
         if buy_legs:
             buy_ok, buy_ids, buy_prices = self.order_basket(buy_legs, qty)
             if not buy_ok:
@@ -1549,7 +1473,6 @@ class Engine:
                 "prices": {k: round(v, 2) for k, v in buy_prices.items()}
             })
 
-        # Step 2: SELL shorts
         sell_ok, sell_ids, sell_prices = self.order_basket(sell_legs, qty)
         if not sell_ok:
             self.logger.critical(
@@ -1569,28 +1492,6 @@ class Engine:
         for sym, side, order_id in executed:
             self.state.data.setdefault("bot_order_ids", []).append(order_id)
 
-        # ── POST-ENTRY STATE ──────────────────────────────────────────────
-        # ── FIX: Use pre-trade basket margin API values for margin tracking.
-        #
-        #    Previously we waited 8+ seconds post-fill and called actual_used_capital()
-        #    which reads live utilised margin from Zerodha. This was unreliable because:
-        #      1. Zerodha's margin ledger takes 5-15s to settle after fills
-        #      2. utilised fields (span, exposure, total) vary depending on which
-        #         field is read and whether hedge netting has propagated yet
-        #      3. The result was consistently showing ~₹1.7L instead of ₹1.25L
-        #
-        #    The basket margin API (called ~40s before trade via exact_margin_for_basket)
-        #    returns two values:
-        #      - initial_margin: gross margin before hedge netting (used for lot sizing)
-        #      - final_margin:   net margin after hedge offsets — THIS matches Zerodha
-        #                        console and is what Zerodha actually blocks
-        #
-        #    We already have final_margin from the lot-sizing call above. We reuse it
-        #    directly — no post-trade API call needed, no timing issues.
-        # ── END FIX ──────────────────────────────────────────────────────────
-
-        # final_margin already set above from exact_margin_for_basket() call
-        # Use it directly — accurate, pre-trade, no timing dependency
         actual_margin_used                            = final_margin
         self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = final_margin / lots if lots > 0 else 0
@@ -1936,10 +1837,22 @@ class Engine:
 
     # ── EXIT CHECK ────────────────────────────────────────────────────────
     def check_exit(self) -> Optional[str]:
-        now_t = datetime.now(Config.TIMEZONE).time()
-        if now_t >= Config.EXIT_TIME:
-            return "Scheduled exit time reached"
+        """
+        ONLY 3 exit conditions:
+          1. Scheduled 3pm exit
+          2. Profit target hit (after MIN_HOLD_SECONDS_FOR_PROFIT)
+          3. Stop-loss hit
 
+        ALL other exits (VIX absolute, VIX spike, emergency stop file,
+        extreme glitch filter) have been REMOVED.
+        """
+        now_t = datetime.now(Config.TIMEZONE).time()
+
+        # ── EXIT 1: Scheduled 3pm exit ────────────────────────────────────
+        if now_t >= Config.EXIT_TIME:
+            return "Scheduled exit time reached (3:00 PM)"
+
+        # ── Parse entry time ──────────────────────────────────────────────
         now        = datetime.now(Config.TIMEZONE)
         entry_time = self.state.data.get("entry_time")
         if isinstance(entry_time, str):
@@ -1955,7 +1868,7 @@ class Engine:
 
         time_since_entry = (now - entry_time).total_seconds() if entry_time else float('inf')
 
-        # Average 3 LTP snapshots to avoid triggering on a single bad tick
+        # ── Compute current PnL (average 3 snapshots for stability) ───────
         exit_legs = self.state.data.get("algo_legs", {})
         open_syms = [
             leg["symbol"].strip()
@@ -1970,6 +1883,7 @@ class Engine:
                 if v > 0:
                     ltp_samples[s].append(v)
             time.sleep(0.3)
+
         avg_ltps = {
             s: (sum(vs) / len(vs)) if vs else 0.0
             for s, vs in ltp_samples.items()
@@ -1983,9 +1897,6 @@ class Engine:
             if leg.get("status") == "CLOSED":
                 price = leg.get("exit_price", 0.0)
             else:
-                # ── FIX 1: Use explicit > 0 check instead of falsy `or`.
-                #    Previously `avg_ltps.get(sym) or fallback` would incorrectly
-                #    use the fallback when LTP was a valid 0.0 (e.g. option expired).
                 ltp = avg_ltps.get(sym, 0.0)
                 price = ltp if ltp > 0 else leg.get("last_known_ltp", leg["entry_price"])
             qty_abs = abs(leg["qty"])
@@ -1994,44 +1905,42 @@ class Engine:
             else:
                 pnl_val += (price - leg["entry_price"]) * qty_abs
 
-        target_rupee = self.state.data.get("profit_target_rupee", 0.0)
-
-        # ── FIX 2: Always update self.last_pnl even when rejecting a spike.
-        #    Previously last_pnl was left stale after a spike rejection, causing
-        #    every subsequent tick to also appear as a spike (since it compared
-        #    against the same old value), freezing PnL display indefinitely.
-        if target_rupee > 0 and abs(pnl_val - self.last_pnl) > target_rupee * 0.2:
-            self.logger.critical("P&L SPIKE DETECTED - IGNORING FOR SAFETY", {
-                "current": pnl_val,
-                "last":    self.last_pnl,
-                "jump":    pnl_val - self.last_pnl
-            })
-            self.last_pnl = pnl_val  # ← Update so next tick compares against current value
-            return None
-
+        # Always keep last_pnl current so next tick has a valid baseline
         self.last_pnl = pnl_val
 
-        if time_since_entry < 300 and abs(pnl_val) > 2500:
-            self.logger.critical("EXTREME P&L GLITCH DETECTED - IGNORED", {
-                "pnl":                 pnl_val,
-                "seconds_since_entry": time_since_entry
-            })
-            return None
+        target_rupee = self.state.data.get("profit_target_rupee", 0.0)
+
+        self.logger.info("PNL CHECK", {
+            "pnl_₹":             round(pnl_val, 2),
+            "target_₹":          round(target_rupee),
+            "stop_loss_₹":       round(-target_rupee),
+            "seconds_in_trade":  round(time_since_entry),
+            "hold_required_sec": Config.MIN_HOLD_SECONDS_FOR_PROFIT,
+        })
 
         if target_rupee > 0:
-            if pnl_val >= target_rupee and time_since_entry >= Config.MIN_HOLD_SECONDS_FOR_PROFIT:
-                return f"Profit target reached ₹{pnl_val:,.0f}"
+            # ── EXIT 2: Profit target ─────────────────────────────────────
+            if pnl_val >= target_rupee:
+                if time_since_entry >= Config.MIN_HOLD_SECONDS_FOR_PROFIT:
+                    return f"Profit target reached ₹{pnl_val:,.0f}"
+                else:
+                    self.logger.info(
+                        "PROFIT TARGET HIT — waiting for min hold time", {
+                            "pnl_₹":              round(pnl_val, 2),
+                            "target_₹":           round(target_rupee),
+                            "seconds_in_trade":   round(time_since_entry),
+                            "hold_required_sec":  Config.MIN_HOLD_SECONDS_FOR_PROFIT,
+                            "remaining_hold_sec": round(
+                                Config.MIN_HOLD_SECONDS_FOR_PROFIT - time_since_entry
+                            ),
+                        }
+                    )
+                    # Do NOT return — keep checking every tick until hold time met
+
+            # ── EXIT 3: Stop-loss ─────────────────────────────────────────
             if pnl_val <= -target_rupee:
                 return f"Stop loss hit ₹{pnl_val:,.0f}"
 
-        vix_now   = self.vix()
-        entry_vix = self.state.data.get("entry_vix")
-        if vix_now and vix_now >= Config.VIX_EXIT_ABS:
-            return "VIX absolute exit"
-        if entry_vix and vix_now and vix_now >= entry_vix * Config.VIX_SPIKE_MULTIPLIER:
-            return "VIX spike detected"
-        if os.path.exists(Config.EMERGENCY_STOP_FILE):
-            return "Emergency stop file detected"
         return None
 
     # ── EXIT ──────────────────────────────────────────────────────────────
@@ -2115,7 +2024,6 @@ class Engine:
                 self.logger.critical("PARTIAL EXIT - emergency flatten")
                 self._emergency_square_off("Partial exit")
 
-            # Save final authoritative PnL to DailyPnL
             today = datetime.now(Config.TIMEZONE).date()
             with transaction.atomic():
                 daily, created = DailyPnL.objects.get_or_create(
@@ -2192,12 +2100,6 @@ class Engine:
 
     # ── PERIODIC PNL SNAPSHOT ─────────────────────────────────────────────
     def save_periodic_pnl_snapshot(self):
-        """
-        Upsert today's DailyPnL with current unrealized P&L for the calendar.
-        Guard: total_trades == 0 means exit() hasn't finalized yet — safe to update.
-        exit() always increments total_trades to >= 1, so this snapshot can never
-        overwrite exit()'s final authoritative value.
-        """
         if not self.state.data.get("trade_active"):
             return
         try:
@@ -2255,7 +2157,6 @@ class TradingApplication:
         self._daily_summary_saved      = False
         self._last_snapshot_time       = time.time()
 
-        # Gevent-safe entry lock
         if self.user.id not in _USER_ENTRY_LOCKS:
             _USER_ENTRY_LOCKS[self.user.id] = GeventSemaphore(1)
         self._entry_lock              = _USER_ENTRY_LOCKS[self.user.id]
@@ -2488,15 +2389,12 @@ class TradingApplication:
                             # ── ENTRY LOGIC ───────────────────────────────
                             if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
 
-                                # Fast pre-checks before hitting the DB
                                 if today_weekday == 1:
                                     self.logger.critical("TUESDAY SKIP — NO ENTRY TODAY")
                                     time.sleep(300)
                                     continue
 
                                 if self.engine.state.data.get("trade_taken_today"):
-                                    # In-memory fast path: DB gate already fired,
-                                    # state persisted — skip without another DB hit.
                                     time.sleep(5)
                                     continue
 
