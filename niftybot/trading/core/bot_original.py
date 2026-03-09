@@ -37,8 +37,8 @@ class Config:
     EXCHANGE                         = "NFO"
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
-    ENTRY_START                      = dtime(9, 51, 0)
-    ENTRY_END                        = dtime(9, 52, 59)
+    ENTRY_START                      = dtime(9, 21, 0)
+    ENTRY_END                        = dtime(9, 22, 59)
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -65,7 +65,7 @@ class Config:
     MIN_HOLD_SECONDS_FOR_PROFIT      = 300   # 5 minutes (was 1800 — reduced to prevent missing target)
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
-    PERIODIC_PNL_SNAPSHOT_INTERVAL   = 30
+    PERIODIC_PNL_SNAPSHOT_INTERVAL   = 2
 
 
 INDIA_HOLIDAYS     = holidays.India()
