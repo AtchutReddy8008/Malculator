@@ -48,8 +48,8 @@ class Config:
     MAX_CAPITAL_USAGE                = 1.0
     MIN_CAPITAL_FOR_1LOT             = 120000
     MAX_LOTS                         = 50
-    VIX_MIN                          = 7.0
-    VIX_MAX                          = 30.0
+    VIX_MIN                          = 10.0
+    VIX_MAX                          = 25.0
     VIX_THRESHOLD_FOR_PERCENT_TARGET = 12
     PERCENT_TARGET_WHEN_VIX_HIGH     = 0.020
     ADJUSTMENT_TRIGGER_POINTS        = 50
@@ -65,7 +65,7 @@ class Config:
     MIN_HOLD_SECONDS_FOR_PROFIT      = 300   # 5 minutes (was 1800 — reduced to prevent missing target)
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
-    PERIODIC_PNL_SNAPSHOT_INTERVAL   = 2
+    PERIODIC_PNL_SNAPSHOT_INTERVAL   = 1
 
 
 INDIA_HOLIDAYS     = holidays.India()
