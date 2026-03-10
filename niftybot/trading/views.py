@@ -667,7 +667,7 @@ def update_max_lots(request):
         try:
             new_cap = int(max_lots_str)
             # Bot supports up to MAX_LOTS=50; keep a sane UI cap of 20
-            if not 1 <= new_cap <= 20:
+            if not 1 <= new_cap <= 50:
                 return JsonResponse(
                     {'success': False, 'error': 'Value must be between 1 and 20'},
                     status=400
