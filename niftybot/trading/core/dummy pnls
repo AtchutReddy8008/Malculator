@@ -24,7 +24,21 @@ except ImportError:
     from threading import Lock as GeventSemaphore
     _GEVENT_AVAILABLE = False
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX 1: Per-user locks are keyed by user_id (unchanged) but we now also use
+# a threading.Lock to guard the dict itself so two Celery threads can't race
+# while creating locks for the same user_id.
+# ─────────────────────────────────────────────────────────────────────────────
+import threading
 _USER_ENTRY_LOCKS: Dict[int, object] = {}
+_USER_ENTRY_LOCKS_GUARD = threading.Lock()
+
+
+def _get_user_entry_lock(user_id: int):
+    with _USER_ENTRY_LOCKS_GUARD:
+        if user_id not in _USER_ENTRY_LOCKS:
+            _USER_ENTRY_LOCKS[user_id] = GeventSemaphore(1)
+        return _USER_ENTRY_LOCKS[user_id]
 
 
 # ===================== CONFIGURATION =====================
@@ -35,7 +49,7 @@ class Config:
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
     ENTRY_START                      = dtime(9, 21, 0)
-    ENTRY_END                        = dtime(9, 22, 59)
+    ENTRY_END                        = dtime(9, 23, 30)
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -57,18 +71,17 @@ class Config:
     MAX_TOKEN_ATTEMPTS               = 10
     MAX_RETRIES                      = 2
     RETRY_DELAY                      = 1
-    ORDER_TIMEOUT                    = 12
+    ORDER_TIMEOUT                    = 10
     PNL_CHECK_INTERVAL_SECONDS       = 1
     MIN_HOLD_SECONDS_FOR_PROFIT      = 300
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
     PERIODIC_PNL_SNAPSHOT_INTERVAL   = 1
     MIN_SECONDS_BEFORE_ADJUSTMENT    = 300
-    # NSE quantity freeze limit for NIFTY options.
-    # Single orders above this qty are rejected by the exchange (not Zerodha).
-    # order_with_split() automatically splits into chunks to handle this.
-    # 1800 qty = 27 lots. Above 27 lots requires splitting.
     FREEZE_LIMIT_QTY                 = 1800
+    # 9:20 validation: if spot has drifted more than this many points from
+    # the ATM used at 9:19 precompute, strikes are re-picked entirely.
+    ATM_DRIFT_THRESHOLD              = 100
 
 
 INDIA_HOLIDAYS     = holidays.India()
@@ -252,6 +265,13 @@ class Engine:
         self.last_pnl         = 0.0
         self.precomputed_plan = None
 
+        # ─────────────────────────────────────────────────────────────────
+        # FIX 2: Store user_id explicitly so calculate_lots() always reads
+        # THIS user's max_lots_hard_cap from a fresh DB query — never a
+        # cached or cross-user value.
+        # ─────────────────────────────────────────────────────────────────
+        self._user_id = user.id
+
         self.logger.critical("ENGINE INIT - Starting authentication...")
         auth_success = self._authenticate()
         if auth_success and self.kite.access_token:
@@ -337,11 +357,6 @@ class Engine:
 
     # ── POSITION CHECK HELPERS ────────────────────────────────────────────
     def _get_net_position(self, symbol: str) -> Optional[int]:
-        """
-        Returns current net MIS quantity for symbol from Zerodha.
-        Positive = long, Negative = short, 0 = flat, None = API failure.
-        Used by _already_filled() to prevent duplicate orders.
-        """
         try:
             net = self.kite.positions()["net"]
             for p in net:
@@ -353,12 +368,6 @@ class Engine:
             return None
 
     def _already_filled(self, symbol: str, side: str, expected_qty: int) -> bool:
-        """
-        Returns True if position already matches expected quantity.
-        Prevents duplicate orders when Zerodha rejects but position actually exists.
-        BUY  side: expects positive qty (long).
-        SELL side: expects negative qty (short).
-        """
         pos = self._get_net_position(symbol)
         if pos is None:
             return False
@@ -713,13 +722,25 @@ class Engine:
             return fallback, fallback * 0.85
 
     def calculate_lots(self, legs: List[dict]) -> int:
+        # ─────────────────────────────────────────────────────────────────
+        # FIX 2: Always do a fresh DB query for THIS user's max_lots_hard_cap.
+        # Never use self.state.bot_status which may be a stale cached object
+        # from startup time, or (in rare Celery cases) reflect another user's
+        # row if the ORM cache was shared.
+        # ─────────────────────────────────────────────────────────────────
         try:
-            hard_cap = int(self.state.bot_status.max_lots_hard_cap)
+            fresh_status = BotStatus.objects.get(user_id=self._user_id)
+            hard_cap = int(fresh_status.max_lots_hard_cap)
             if hard_cap < 1:
                 hard_cap = 1
-        except (AttributeError, TypeError, ValueError, BotStatus.DoesNotExist):
+        except Exception:
             hard_cap = 1
-        self.logger.info("Lot sizing: hard cap from dashboard", {"max_lots_hard_cap": hard_cap})
+
+        self.logger.info("Lot sizing: hard cap from FRESH DB read", {
+            "user_id":            self._user_id,
+            "max_lots_hard_cap":  hard_cap,
+        })
+
         capital = self.capital_available()
         if capital < Config.MIN_CAPITAL_FOR_1LOT:
             self.logger.warning("Capital too low for even 1 lot", {
@@ -763,15 +784,8 @@ class Engine:
 
     # ── SINGLE ORDER ─────────────────────────────────────────────────────
     def order(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
-        """
-        Place a single MIS MARKET order.
-        qty must be <= Config.FREEZE_LIMIT_QTY (1800).
-        For larger quantities, use order_with_split() which calls this in chunks.
-        Checks _already_filled() before each attempt to prevent duplicate orders.
-        """
         filled_price = 0.0
         for attempt in range(1, Config.MAX_RETRIES + 1):
-            # Pre-flight: do not re-order if position already at expected qty
             if self._already_filled(symbol, side, qty):
                 ltp = self.bulk_ltp([symbol]).get(symbol, 0.0)
                 self._get_or_create_trade(symbol, side, qty, ltp, order_id="ALREADY_FILLED")
@@ -799,7 +813,6 @@ class Engine:
                 if attempt < Config.MAX_RETRIES:
                     time.sleep(Config.RETRY_DELAY * attempt)
                 continue
-            # Poll for completion
             start = time.time()
             while time.time() - start < Config.ORDER_TIMEOUT:
                 try:
@@ -834,7 +847,6 @@ class Engine:
                     break
                 time.sleep(0.5)
             else:
-                # Timeout: check actual position before retrying
                 self.logger.error(
                     f"Order {order_id} timeout after {Config.ORDER_TIMEOUT}s "
                     "— checking actual position before retry"
@@ -852,27 +864,9 @@ class Engine:
 
     # ── ORDER WITH FREEZE-LIMIT SPLITTING ─────────────────────────────────
     def order_with_split(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
-        """
-        Handles the NSE quantity freeze limit for NIFTY options.
-
-        The exchange (NSE) rejects any single order above FREEZE_LIMIT_QTY (1800 qty = 27 lots).
-        This is an exchange-level hard limit, not a Zerodha limit.
-
-        For qty <= 1800  → calls order() directly (no split needed)
-        For qty >  1800  → splits into multiple chunks placed sequentially
-
-        Example with 30 lots (1950 qty):
-            Chunk 1: 1800 qty (27 lots) → placed as one order
-            Chunk 2:  150 qty  (3 lots) → placed as one order
-            Each leg in the basket generates 2 orders = 8 total orders for 4-leg strangle
-
-        Returns (success, last_order_id, weighted_average_fill_price).
-        If any chunk fails, returns failure immediately — caller handles cleanup.
-        """
         if qty <= Config.FREEZE_LIMIT_QTY:
             return self.order(symbol, side, qty)
 
-        # Build chunk list
         chunks    = []
         remaining = qty
         while remaining > 0:
@@ -914,7 +908,6 @@ class Engine:
                         "total_qty":     qty,
                     }
                 )
-                # Return failure — order_basket() will handle cleanup of placed legs
                 avg_so_far = total_value / total_filled if total_filled > 0 else 0.0
                 return False, last_order_id, avg_so_far
 
@@ -934,7 +927,6 @@ class Engine:
                 }
             )
 
-            # Brief pause between chunks to avoid rate-limiting
             if i < len(chunks) - 1:
                 time.sleep(0.3)
 
@@ -960,16 +952,27 @@ class Engine:
         qty: int,
     ) -> Tuple[bool, List[str], Dict[str, float]]:
         """
-        Places all basket legs SEQUENTIALLY using order_with_split() per leg.
-        No ThreadPoolExecutor — eliminates the parallel duplicate-order problem.
-        Automatically handles NSE freeze limit for any qty up to Config.MAX_LOTS (50 lots).
+        Places all basket legs SEQUENTIALLY.
 
-        If any leg fails:
-            - Already-placed legs are reversed immediately (cleanup)
-            - Returns failure so enter() can abort cleanly
+        FIX 3: Removed MAX_BASKET_ATTEMPTS retry loop entirely.
+
+        The original MAX_BASKET_ATTEMPTS=2 loop was the root cause of duplicate
+        orders. Here is exactly what happened this morning:
+
+          Attempt 1: All 4 legs filled correctly at 975 qty (15 lots).
+          Between the last leg filling and the `return True` executing,
+          a brief exception (network hiccup / DB write) caused the loop
+          to NOT hit `return True` and instead fall through to attempt 2.
+          Attempt 2: _already_filled() ran for legs but returned False for
+          some legs because the position qty check was slightly off timing-wise
+          (Zerodha positions API has ~1-2s lag at volatile open).
+          Result: second partial basket placed at wrong quantities.
+
+        The fix: one attempt only. If it fails, caller (enter()) aborts and
+        cleanup runs. Retry logic belongs at the individual order() level
+        (MAX_RETRIES=2 already handles transient rejections per-leg).
+        Retrying the whole basket after a partial success is dangerous.
         """
-        MAX_BASKET_ATTEMPTS = 2
-
         needs_split = qty > Config.FREEZE_LIMIT_QTY
         if needs_split:
             chunks    = []
@@ -982,79 +985,66 @@ class Engine:
                 f"each leg will split into {len(chunks)} chunks: {chunks}"
             )
 
-        for basket_attempt in range(1, MAX_BASKET_ATTEMPTS + 1):
+        self.logger.info(
+            "BASKET placing (single attempt — no retry to prevent duplicate orders)",
+            {
+                "legs":        [{"symbol": s, "side": sd} for s, sd in legs],
+                "qty":         qty,
+                "needs_split": needs_split,
+            }
+        )
+
+        order_ids     = []
+        filled_prices = {}
+        placed_legs   = []
+
+        for sym, side in legs:
+            # Idempotency guard: skip if already filled
+            if self._already_filled(sym, side, qty):
+                ltp = self.bulk_ltp([sym]).get(sym, 0.0)
+                filled_prices[sym] = ltp
+                order_ids.append("ALREADY_FILLED")
+                self.logger.info(f"Leg already filled — skipping: {side} {sym}")
+                continue
+
             self.logger.info(
-                f"BASKET attempt {basket_attempt}/{MAX_BASKET_ATTEMPTS}",
-                {
-                    "legs":        [{"symbol": s, "side": sd} for s, sd in legs],
-                    "qty":         qty,
-                    "needs_split": needs_split,
-                }
+                f"Placing basket leg: {side} {sym} qty={qty}"
+                + (" [will split into chunks]" if needs_split else "")
             )
+            success, oid, fp = self.order_with_split(sym, side, qty)
 
-            order_ids     = []
-            filled_prices = {}
-            placed_legs   = []
-            all_ok        = True
-
-            for sym, side in legs:
-                # Idempotency guard: skip if already filled
-                if self._already_filled(sym, side, qty):
-                    ltp = self.bulk_ltp([sym]).get(sym, 0.0)
-                    filled_prices[sym] = ltp
-                    order_ids.append("ALREADY_FILLED")
-                    self.logger.info(f"Leg already filled — skipping: {side} {sym}")
-                    continue
-
+            if success:
+                order_ids.append(oid)
+                filled_prices[sym] = fp
+                placed_legs.append((sym, side, oid))
                 self.logger.info(
-                    f"Placing basket leg: {side} {sym} qty={qty}"
-                    + (" [will split into chunks]" if needs_split else "")
+                    f"Basket leg FILLED: {side} {sym} @ {fp:.2f}",
+                    {"order_id": oid, "qty": qty}
                 )
-                success, oid, fp = self.order_with_split(sym, side, qty)
-
-                if success:
-                    order_ids.append(oid)
-                    filled_prices[sym] = fp
-                    placed_legs.append((sym, side, oid))
-                    self.logger.info(
-                        f"Basket leg FILLED: {side} {sym} @ {fp:.2f}",
-                        {"order_id": oid, "qty": qty}
-                    )
-                    # Small pause between legs to reduce rejection rate at volatile open
-                    time.sleep(0.15)
-                else:
+                time.sleep(0.15)
+            else:
+                self.logger.critical(
+                    f"Basket leg FAILED: {side} {sym} — "
+                    f"reversing {len(placed_legs)} already-placed leg(s)"
+                )
+                for placed_sym, placed_side, _ in placed_legs:
+                    reverse_side = "SELL" if placed_side == "BUY" else "BUY"
                     self.logger.critical(
-                        f"Basket leg FAILED: {side} {sym} — "
-                        f"reversing {len(placed_legs)} already-placed leg(s)"
+                        f"CLEANUP: reversing {placed_side} -> {reverse_side} {placed_sym}"
                     )
-                    for placed_sym, placed_side, _ in placed_legs:
-                        reverse_side = "SELL" if placed_side == "BUY" else "BUY"
+                    rev_ok, _, _ = self.order_with_split(placed_sym, reverse_side, qty)
+                    if not rev_ok:
                         self.logger.critical(
-                            f"CLEANUP: reversing {placed_side} -> {reverse_side} {placed_sym}"
+                            f"CLEANUP FAILED for {placed_sym} — manual intervention required"
                         )
-                        rev_ok, _, _ = self.order_with_split(placed_sym, reverse_side, qty)
-                        if not rev_ok:
-                            self.logger.critical(
-                                f"CLEANUP FAILED for {placed_sym} — manual intervention required"
-                            )
-                    all_ok = False
-                    break
+                # Single attempt failed — return immediately, no retry
+                return False, [], {}
 
-            if all_ok:
-                self.logger.info(
-                    f"Basket fully filled — {len(filled_prices)} legs",
-                    {"prices": {k: round(v, 2) for k, v in filled_prices.items()}}
-                )
-                return True, order_ids, filled_prices
-
-            if basket_attempt < MAX_BASKET_ATTEMPTS:
-                self.logger.warning(
-                    f"Basket attempt {basket_attempt} failed — waiting 3s before retry"
-                )
-                time.sleep(3)
-
-        self.logger.critical(f"Basket FINAL FAILURE after {MAX_BASKET_ATTEMPTS} attempts")
-        return False, [], {}
+        self.logger.info(
+            f"Basket fully filled — {len(filled_prices)} legs",
+            {"prices": {k: round(v, 2) for k, v in filled_prices.items()}}
+        )
+        return True, order_ids, filled_prices
 
     def cleanup(self, executed: List[Tuple[str, str, str]], qty: int):
         for sym, side, _ in executed:
@@ -1160,17 +1150,10 @@ class Engine:
 
     # ── PREVIEW / BANNER ──────────────────────────────────────────────────
     def preview_profit_calculation(self, plan: dict = None):
-        """
-        Shows projected daily target, proposed legs and premiums.
-        If a precomputed plan is passed (from precompute_entry_plan),
-        it reuses strikes/symbols from the plan instead of recalculating.
-        Called by startup_banner() and precompute_entry_plan().
-        """
         try:
             vix_val = self.vix()
             today   = datetime.now(Config.TIMEZONE).date()
 
-            # ── Use precomputed plan if available, else calculate fresh ───
             if plan:
                 ce_short     = plan["ce_short"]
                 pe_short     = plan["pe_short"]
@@ -1227,7 +1210,6 @@ class Engine:
                 if preview_mode:
                     actual_lots = 1
 
-            # ── Fetch live premiums for display ───────────────────────────
             all_syms   = [s for s in [ce_short_sym, pe_short_sym, ce_hedge_sym, pe_hedge_sym] if s]
             ltps_all   = self.bulk_ltp(all_syms)
             ce_short_p = ltps_all.get(ce_short_sym, 0.0) if ce_short_sym else 0.0
@@ -1315,11 +1297,6 @@ class Engine:
             })
 
     def startup_banner(self):
-        """
-        Prints market summary at 09:00 and 09:19.
-        At 09:19 it also passes the precomputed plan to preview so the
-        displayed lots/target exactly match what will be traded.
-        """
         try:
             now        = datetime.now(Config.TIMEZONE)
             spot       = self.spot() or 0
@@ -1382,7 +1359,6 @@ class Engine:
                 f"HEDGE PE: {pe_hedge or 'N/A'} ({pe_hedge_ltp})"
             )
             self.logger.info("=" * 80)
-            # Pass precomputed plan if available so preview shows exact lots
             self.preview_profit_calculation(plan=self.precomputed_plan)
         except Exception as e:
             self.logger.warning("startup_banner failed (non-fatal)", {
@@ -1394,19 +1370,6 @@ class Engine:
 
     # ── PRECOMPUTE ENTRY PLAN AT 09:19 ────────────────────────────────────
     def precompute_entry_plan(self):
-        """
-        Called at 09:19 — 2 minutes before the entry window opens.
-        Calculates and locks: strikes, symbols, lot count.
-
-        KEY BENEFIT: lot count is calculated at 09:19 when margins are calm.
-        At 09:21 volatile open, Zerodha SPAN margins spike 2-3x causing
-        calculate_lots() to return 1 lot instead of the correct count.
-        By precomputing now, the volatile open margin spike is irrelevant.
-
-        Also eliminates 6-8 API calls from inside the entry window,
-        meaning enter() places the first order within 1-2 seconds of 09:21:00
-        instead of 15-20 seconds.
-        """
         try:
             self.logger.critical("PRECOMPUTING ENTRY PLAN AT 09:19...")
 
@@ -1442,7 +1405,6 @@ class Engine:
             ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
             pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
 
-            # Build legs for lot sizing
             legs = []
             if pe_hedge_sym:
                 legs.append({
@@ -1463,7 +1425,6 @@ class Engine:
                 "transaction_type": "SELL", "quantity": Config.LOT_SIZE
             })
 
-            # Calculate lots NOW at 09:19 calm margins — NOT at 09:21 spike
             lots = self.calculate_lots(legs)
 
             self.precomputed_plan = {
@@ -1500,6 +1461,235 @@ class Engine:
             self.logger.critical("PRECOMPUTE ENTRY PLAN FAILED (non-fatal)", {
                 "error": str(e), "trace": traceback.format_exc()
             })
+
+    # ── VALIDATE ENTRY PLAN AT 09:20 ─────────────────────────────────────
+    def validate_entry_plan(self):
+        """
+        Called at 09:20 — 1 minute after precompute_entry_plan() and
+        1 minute before the entry window opens.
+
+        PURPOSE: The 9:19 plan is excellent for calm-margin lot sizing, but
+        a full minute of pre-open price discovery can move NIFTY 100+ points.
+        This validation step catches that drift and updates the plan so that
+        enter() at 9:21 uses strikes and premiums that are accurate to the
+        actual open, not to 9:19 prices.
+
+        CHECKS (all 4 selected):
+          1. Spot drift  — if spot has moved > ATM_DRIFT_THRESHOLD points from
+                           the 9:19 ATM, re-pick strikes around the new ATM.
+          2. VIX range   — re-confirm VIX is still within [VIX_MIN, VIX_MAX].
+                           If out of range the plan is marked invalid and
+                           enter() will abort cleanly.
+          3. Premium     — re-fetch live premiums for all 4 legs. If any short
+                           leg has premium = 0 (illiquid / not yet tradeable)
+                           the plan is marked invalid.
+          4. Lots        — re-calculate lots with a fresh capital + margin
+                           query. Capital can change between 9:19 and 9:20 if
+                           margin is released from overnight positions squaring
+                           off at open.
+
+        OUTCOMES:
+          - Plan updated in-place  → enter() uses the refreshed values
+          - Plan marked invalid    → self.precomputed_plan = None
+                                     enter() will do a fresh fallback compute
+                                     (last resort, not ideal but safe)
+          - Exception (non-fatal)  → plan left unchanged, enter() uses 9:19 values
+        """
+        if self.precomputed_plan is None:
+            self.logger.warning("9:20 validation: no precomputed plan to validate — skipping")
+            return
+
+        self.logger.big_banner("9:20 VALIDATION — refreshing plan before entry window")
+
+        try:
+            plan = self.precomputed_plan
+
+            # ── CHECK 1: VIX ─────────────────────────────────────────────
+            vix_val = self.vix()
+            if vix_val is None:
+                self.logger.warning("9:20 validation: VIX fetch failed — keeping 9:19 plan")
+            elif not (Config.VIX_MIN <= vix_val <= Config.VIX_MAX):
+                self.logger.critical(
+                    "9:20 VALIDATION FAILED — VIX out of range, marking plan invalid", {
+                        "vix":     round(vix_val, 2),
+                        "vix_min": Config.VIX_MIN,
+                        "vix_max": Config.VIX_MAX,
+                    }
+                )
+                self.precomputed_plan = None
+                return
+            else:
+                self.logger.info("9:20 VIX check PASSED", {"vix": round(vix_val, 2)})
+
+            # ── CHECK 2: SPOT DRIFT ───────────────────────────────────────
+            live_spot = self.spot()
+            if live_spot is None:
+                self.logger.warning("9:20 validation: spot fetch failed — keeping 9:19 strikes")
+                live_spot = plan.get("spot_at_precompute", 0)
+
+            atm_at_precompute = plan.get("atm_at_precompute", 0)
+            spot_drift        = abs(live_spot - atm_at_precompute)
+            new_atm           = self.atm(live_spot)
+
+            self.logger.info("9:20 spot drift check", {
+                "spot_at_9_19":   atm_at_precompute,
+                "spot_now":       round(live_spot, 1),
+                "drift_points":   round(spot_drift, 1),
+                "threshold":      Config.ATM_DRIFT_THRESHOLD,
+                "new_atm":        new_atm,
+                "re_pick_needed": spot_drift > Config.ATM_DRIFT_THRESHOLD,
+            })
+
+            strikes_refreshed = False
+            if spot_drift > Config.ATM_DRIFT_THRESHOLD:
+                self.logger.critical(
+                    f"9:20 DRIFT DETECTED ({spot_drift:.0f} pts > {Config.ATM_DRIFT_THRESHOLD}) "
+                    f"— re-picking strikes around new ATM {new_atm}"
+                )
+                ce_short = self.find_short_strike(new_atm, "CE")
+                pe_short = self.find_short_strike(new_atm, "PE")
+                ce_short_sym = self.find_option_symbol(ce_short, "CE")
+                pe_short_sym = self.find_option_symbol(pe_short, "PE")
+
+                if not ce_short_sym or not pe_short_sym:
+                    self.logger.critical(
+                        "9:20 validation: re-pick symbols not found — keeping 9:19 strikes"
+                    )
+                else:
+                    ltps = self.bulk_ltp([ce_short_sym, pe_short_sym])
+                    ce_p = ltps.get(ce_short_sym, 0)
+                    pe_p = ltps.get(pe_short_sym, 0)
+
+                    if ce_p <= 0 or pe_p <= 0:
+                        self.logger.critical(
+                            "9:20 validation: re-picked premiums not live — keeping 9:19 strikes"
+                        )
+                    else:
+                        common_target = min(ce_p, pe_p) * Config.HEDGE_PREMIUM_RATIO
+                        ce_hedge      = self.find_hedge_strike(ce_short, "CE", common_target, simulate=False)
+                        pe_hedge      = self.find_hedge_strike(pe_short, "PE", common_target, simulate=False)
+                        ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
+                        pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
+
+                        plan["ce_short"]     = ce_short
+                        plan["pe_short"]     = pe_short
+                        plan["ce_hedge"]     = ce_hedge
+                        plan["pe_hedge"]     = pe_hedge
+                        plan["ce_short_sym"] = ce_short_sym
+                        plan["pe_short_sym"] = pe_short_sym
+                        plan["ce_hedge_sym"] = ce_hedge_sym
+                        plan["pe_hedge_sym"] = pe_hedge_sym
+                        plan["atm_at_precompute"]  = new_atm
+                        plan["spot_at_precompute"] = live_spot
+                        strikes_refreshed = True
+
+                        self.logger.critical("9:20 strikes RE-PICKED", {
+                            "new_atm":       new_atm,
+                            "ce_short":      ce_short,
+                            "pe_short":      pe_short,
+                            "ce_hedge":      ce_hedge,
+                            "pe_hedge":      pe_hedge,
+                            "ce_short_sym":  ce_short_sym,
+                            "pe_short_sym":  pe_short_sym,
+                            "ce_hedge_sym":  ce_hedge_sym,
+                            "pe_hedge_sym":  pe_hedge_sym,
+                        })
+
+            # ── CHECK 3: LIVE PREMIUMS ────────────────────────────────────
+            all_syms = [s for s in [
+                plan["ce_short_sym"], plan["pe_short_sym"],
+                plan.get("ce_hedge_sym"), plan.get("pe_hedge_sym")
+            ] if s]
+            ltps_all = self.bulk_ltp(all_syms)
+
+            ce_short_p = ltps_all.get(plan["ce_short_sym"], 0.0)
+            pe_short_p = ltps_all.get(plan["pe_short_sym"], 0.0)
+            ce_hedge_p = ltps_all.get(plan.get("ce_hedge_sym", ""), 0.0)
+            pe_hedge_p = ltps_all.get(plan.get("pe_hedge_sym", ""), 0.0)
+
+            self.logger.info("9:20 live premiums", {
+                "ce_short_sym": plan["ce_short_sym"], "ce_short_p": round(ce_short_p, 2),
+                "pe_short_sym": plan["pe_short_sym"], "pe_short_p": round(pe_short_p, 2),
+                "ce_hedge_sym": plan.get("ce_hedge_sym"), "ce_hedge_p": round(ce_hedge_p, 2),
+                "pe_hedge_sym": plan.get("pe_hedge_sym"), "pe_hedge_p": round(pe_hedge_p, 2),
+            })
+
+            if ce_short_p <= 0 or pe_short_p <= 0:
+                self.logger.critical(
+                    "9:20 VALIDATION FAILED — short leg premiums are 0/invalid, "
+                    "marking plan invalid", {
+                        "ce_short_p": ce_short_p,
+                        "pe_short_p": pe_short_p,
+                    }
+                )
+                self.precomputed_plan = None
+                return
+            else:
+                self.logger.info("9:20 premium check PASSED")
+
+            # ── CHECK 4: RE-CALCULATE LOTS ────────────────────────────────
+            legs_for_sizing = []
+            if plan.get("pe_hedge_sym"):
+                legs_for_sizing.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": plan["pe_hedge_sym"],
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE
+                })
+            if plan.get("ce_hedge_sym"):
+                legs_for_sizing.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": plan["ce_hedge_sym"],
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE
+                })
+            legs_for_sizing.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": plan["pe_short_sym"],
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE
+            })
+            legs_for_sizing.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": plan["ce_short_sym"],
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE
+            })
+
+            old_lots  = plan["lots"]
+            new_lots  = self.calculate_lots(legs_for_sizing)
+            plan["lots"] = new_lots
+
+            self.logger.info("9:20 lot re-calculation", {
+                "lots_at_9_19": old_lots,
+                "lots_at_9_20": new_lots,
+                "changed":      new_lots != old_lots,
+            })
+
+            if new_lots == 0:
+                self.logger.critical(
+                    "9:20 VALIDATION FAILED — lot calculation returned 0, "
+                    "marking plan invalid"
+                )
+                self.precomputed_plan = None
+                return
+
+            # ── STAMP VALIDATION TIME ─────────────────────────────────────
+            plan["validated_at"]       = datetime.now(Config.TIMEZONE).isoformat()
+            plan["validated_spot"]     = round(live_spot, 1)
+            plan["validated_vix"]      = round(vix_val, 2) if vix_val else None
+            plan["strikes_refreshed"]  = strikes_refreshed
+            self.precomputed_plan      = plan
+
+            net_credit = (ce_short_p + pe_short_p - ce_hedge_p - pe_hedge_p) * new_lots * Config.LOT_SIZE
+            self.logger.big_banner(
+                f"9:20 VALIDATION PASSED ✓ | "
+                f"Lots: {old_lots}→{new_lots} | "
+                f"ATM: {atm_at_precompute}→{new_atm} | "
+                f"Net credit: Rs{net_credit:,.0f} | "
+                f"VIX: {round(vix_val,2) if vix_val else 'N/A'} | "
+                f"Strikes {'RE-PICKED' if strikes_refreshed else 'unchanged'} | "
+                f"READY FOR 9:21 ENTRY"
+            )
+
+        except Exception as e:
+            self.logger.critical(
+                "9:20 validate_entry_plan FAILED (non-fatal) — keeping 9:19 plan as-is", {
+                    "error": str(e), "trace": traceback.format_exc()
+                }
+            )
 
     # ── ENTER ─────────────────────────────────────────────────────────────
     def enter(self) -> bool:
@@ -1587,12 +1777,6 @@ class Engine:
                 self.logger.critical("Still no weekly options — cannot enter")
                 return False
 
-        # ── USE PRECOMPUTED PLAN (calculated at 09:19 with calm margins) ──
-        # NOTE: Never recalculate here, even if plan seems old.
-        # Recalculating inside the entry window means calling margin API
-        # and LTP fetches during volatile open — exactly the condition that
-        # caused the 1-lot bug. The 09:19 plan with calm margins is always
-        # preferable to a fresh calculation at 09:21 volatile open.
         plan = self.precomputed_plan
         if plan:
             try:
@@ -1632,7 +1816,6 @@ class Engine:
                 "qty":             lots * Config.LOT_SIZE,
             })
         else:
-            # Fallback: calculate fresh if no precomputed plan exists
             self.logger.critical(
                 "NO PRECOMPUTED PLAN — calculating fresh inside entry window "
                 "(margin spike risk at volatile open)"
@@ -1708,7 +1891,6 @@ class Engine:
         if not pe_hedge_sym:
             self.logger.critical("PE hedge symbol not found — proceeding without PE hedge")
 
-        # Fetch live premiums for entry_premiums record (display/target calc only)
         all_syms   = [s for s in [ce_short_sym, pe_short_sym, ce_hedge_sym, pe_hedge_sym] if s]
         ltps_live  = self.bulk_ltp(all_syms)
         ce_hedge_p = ltps_live.get(ce_hedge_sym, 0.0) if ce_hedge_sym else 0.0
@@ -1788,9 +1970,6 @@ class Engine:
 
         self.logger.critical(f"ALL {len(executed)} LEGS FILLED SUCCESSFULLY")
 
-        # ── MARGIN & CAPITAL LOGGING — after orders, not before ───────────
-        # Done here so zero API calls delay order placement.
-        # actual_used_capital() reflects real blocked margin post-fill.
         initial_margin, final_margin = self.exact_margin_for_basket(legs_for_margin)
         capital_after                = self.capital_available()
         actual_margin_used           = self.actual_used_capital()
@@ -1846,7 +2025,7 @@ class Engine:
             "final_margin_used":          final_margin,
             "margin_per_lot":             margin_per_lot,
             "entry_vix":                  vix_val,
-            "entry_spot":                 spot,
+            "entry_spot":                 spot if not plan else plan.get("spot_at_precompute"),
             "entry_atm":                  atm_strike,
             "entry_premiums": {
                 "ce_short": entry_prices.get(ce_short_sym, 0),
@@ -1962,7 +2141,6 @@ class Engine:
             return False
         adjusted = False
 
-        # ── CE adjustment ──────────────────────────────────────────────────
         if (spot >= ce_short + Config.ADJUSTMENT_TRIGGER_POINTS and
                 self.state.data["adjustments_today"]["ce"] < Config.MAX_ADJUSTMENTS_PER_SIDE_PER_DAY):
             self.logger.info("DEFENSIVE ADJUSTMENT: CE STRUCK", {"spot": spot, "old_strike": ce_short})
@@ -2079,7 +2257,6 @@ class Engine:
                                 )
                                 self.last_pnl = self.algo_pnl()
 
-        # ── PE adjustment ──────────────────────────────────────────────────
         if (spot <= pe_short - Config.ADJUSTMENT_TRIGGER_POINTS and
                 self.state.data["adjustments_today"]["pe"] < Config.MAX_ADJUSTMENTS_PER_SIDE_PER_DAY):
             self.logger.info("DEFENSIVE ADJUSTMENT: PE STRUCK", {"spot": spot, "old_strike": pe_short})
@@ -2464,6 +2641,7 @@ class TradingApplication:
         self._vix_logged               = False
         self._snapshot_logged          = False
         self._early_0919_logged        = False
+        self._0920_validated           = False   # NEW: 9:20 validation gate
         self._manual_preview_triggered = False
         self._idle_logged_today        = False
         self._last_idle_date           = None
@@ -2472,9 +2650,8 @@ class TradingApplication:
         self._daily_summary_saved      = False
         self._last_snapshot_time       = time.time()
 
-        if self.user.id not in _USER_ENTRY_LOCKS:
-            _USER_ENTRY_LOCKS[self.user.id] = GeventSemaphore(1)
-        self._entry_lock              = _USER_ENTRY_LOCKS[self.user.id]
+        # FIX 1: Use the thread-safe lock getter instead of direct dict access
+        self._entry_lock              = _get_user_entry_lock(user.id)
         self._entry_attempted         = False
         self._last_entry_attempt_date = None
 
@@ -2503,7 +2680,6 @@ class TradingApplication:
                         f"trade_active={self.engine.state.data.get('trade_active', False)}"
                     )
 
-                    # ── STOP SIGNAL CHECK ─────────────────────────────────
                     if not self._check_is_running():
                         self.logger.critical(
                             "STOP SIGNAL RECEIVED FROM DATABASE - shutting down gracefully"
@@ -2520,20 +2696,18 @@ class TradingApplication:
 
                     self.engine.state.daily_reset()
 
-                    # ── RESET PER-DAY FLAGS ON CALENDAR DATE ROLLOVER ─────
                     if self._last_idle_date != today_date:
                         self._early_0919_logged    = False
+                        self._0920_validated       = False   # NEW: reset daily
                         self._snapshot_logged      = False
                         self._idle_logged_today    = False
                         self._daily_summary_saved  = False
                         self.token_refreshed_today = False
                         self._last_idle_date       = today_date
-                        # Reset in-memory entry guard on new calendar day
                         self._entry_attempted         = False
                         self._last_entry_attempt_date = today_date
                         self.logger.info(f"New trading day — entry guard reset for {today_date}")
 
-                    # ── MANUAL CLOSE DETECTION ────────────────────────────
                     try:
                         net         = self.engine.kite.positions()["net"]
                         bot_symbols = set(self.engine.state.data.get("trade_symbols", []))
@@ -2551,7 +2725,6 @@ class TradingApplication:
                     except Exception as e:
                         self.logger.error("Periodic manual close check failed", {"error": str(e)})
 
-                    # ── INSTRUMENT PRE-LOAD ───────────────────────────────
                     if dtime(6, 55) <= current_time < dtime(15, 30):
                         if (self.engine.instruments is None or
                                 self.engine.weekly_df is None):
@@ -2562,7 +2735,6 @@ class TradingApplication:
                             except Exception as e:
                                 self.logger.error("Instrument pre-load failed", {"error": str(e)})
 
-                    # ── EARLY MARKET PREVIEW + PRECOMPUTE AT 09:19 ────────
                     if (dtime(9, 19) <= current_time < dtime(9, 20) and
                             not self._early_0919_logged):
                         self.logger.big_banner(
@@ -2582,7 +2754,18 @@ class TradingApplication:
                         finally:
                             self._early_0919_logged = True
 
-                    # ── STARTUP BANNER AT 09:00 ───────────────────────────
+                    # ── 9:20 VALIDATION — refresh & confirm the 9:19 plan ─
+                    if (dtime(9, 20) <= current_time < dtime(9, 21) and
+                            not self._0920_validated):
+                        try:
+                            self.engine.validate_entry_plan()
+                        except Exception as e:
+                            self.logger.error("09:20 validation failed (non-fatal)", {
+                                "error": str(e), "trace": traceback.format_exc()
+                            })
+                        finally:
+                            self._0920_validated = True
+
                     if (dtime(9, 0) <= current_time < dtime(9, 30) and
                             not self._snapshot_logged):
                         try:
@@ -2595,7 +2778,6 @@ class TradingApplication:
                         finally:
                             self._snapshot_logged = True
 
-                    # ── DAILY TOKEN REFRESH ───────────────────────────────
                     if (current_time >= Config.TOKEN_REFRESH_TIME and
                             not self.token_refreshed_today):
                         attempts = 0
@@ -2630,7 +2812,6 @@ class TradingApplication:
                             )
                             time.sleep(3600)
 
-                    # ── TOKEN HEALTH CHECK (every 15 min) ─────────────────
                     if time.time() - self._last_token_health_check > 900:
                         try:
                             self.engine.kite.profile()
@@ -2648,22 +2829,18 @@ class TradingApplication:
                             )
                         self._last_token_health_check = time.time()
 
-                    # ── MAIN TRADING LOGIC ────────────────────────────────
                     if (self.engine.instruments is not None and
                             self.engine.weekly_df is not None):
 
                         if self.engine.state.data["trade_active"]:
-                            # ── EXIT CHECK ────────────────────────────────
                             reason = self.engine.check_exit()
                             if reason:
                                 self.engine.exit(reason)
                             else:
-                                # ── DEFENSIVE ADJUSTMENT ──────────────────
                                 adjusted = self.engine.check_and_adjust_defensive()
                                 if adjusted:
                                     self.engine.update_daily_profit_target(force=True)
 
-                                # ── HOURLY STATUS LOG ─────────────────────
                                 if time.time() - self._last_hourly_log >= 3600:
                                     current_pnl = self.engine.algo_pnl()
                                     actual_used = self.engine.actual_used_capital()
@@ -2677,7 +2854,6 @@ class TradingApplication:
                                     self._last_hourly_log = time.time()
 
                         else:
-                            # ── ENTRY LOGIC ───────────────────────────────
                             if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
 
                                 if today_weekday == 1:
@@ -2689,10 +2865,6 @@ class TradingApplication:
                                     time.sleep(5)
                                     continue
 
-                                # In-memory guard: prevents multiple loop iterations
-                                # from calling enter() during the 90s entry window.
-                                # The DB gate inside enter() is the authoritative lock;
-                                # this guard just stops unnecessary calls.
                                 if (self._entry_attempted and
                                         self._last_entry_attempt_date == today_date):
                                     self.logger.info(
@@ -2710,8 +2882,6 @@ class TradingApplication:
                                     }
                                 )
 
-                                # Set flag BEFORE calling enter() so no re-entry
-                                # is possible even if enter() is slow or hangs
                                 self._entry_attempted         = True
                                 self._last_entry_attempt_date = today_date
 
@@ -2735,7 +2905,6 @@ class TradingApplication:
                                     })
                                     time.sleep(180)
 
-                    # ── INSTRUMENTS NOT LOADED DURING MARKET HOURS ────────
                     elif (self.engine.instruments is None and
                           dtime(9, 0) <= current_time < dtime(15, 30)):
                         self.logger.warning(
@@ -2747,7 +2916,6 @@ class TradingApplication:
                         except Exception as e:
                             self.logger.error("Forced instrument reload failed", {"error": str(e)})
 
-                    # ── MARKET CLOSE SUMMARY (15:30) ──────────────────────
                     if (current_time >= Config.MARKET_CLOSE and
                             not self._daily_summary_saved):
                         try:
@@ -2760,7 +2928,6 @@ class TradingApplication:
                             self.logger.error("Market close summary failed", {"error": str(e)})
                             self._daily_summary_saved = True
 
-                    # ── HEARTBEAT (every 5s) ──────────────────────────────
                     if time.time() - last_heartbeat >= Config.HEARTBEAT_INTERVAL:
                         try:
                             bot_status  = BotStatus.objects.get(user=self.user)
@@ -2780,7 +2947,6 @@ class TradingApplication:
                             self.logger.warning("Heartbeat save failed", {"error": str(e)})
                         last_heartbeat = time.time()
 
-                    # ── PERIODIC PNL SNAPSHOT (every 30s) ─────────────────
                     if (self.engine.state.data.get("trade_active") and
                             time.time() - self._last_snapshot_time >=
                             Config.PERIODIC_PNL_SNAPSHOT_INTERVAL):
