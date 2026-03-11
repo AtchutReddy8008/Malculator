@@ -35,7 +35,7 @@ class Config:
     UNDERLYING                       = "NIFTY"
     LOT_SIZE                         = 65
     ENTRY_START                      = dtime(9, 21, 0)
-    ENTRY_END                        = dtime(9, 22, 59)
+    ENTRY_END                        = dtime(9, 23, 30)
     TOKEN_REFRESH_TIME               = dtime(8, 30)
     EXIT_TIME                        = dtime(15, 0)
     MARKET_CLOSE                     = dtime(15, 30)
@@ -57,7 +57,7 @@ class Config:
     MAX_TOKEN_ATTEMPTS               = 10
     MAX_RETRIES                      = 2
     RETRY_DELAY                      = 1
-    ORDER_TIMEOUT                    = 35
+    ORDER_TIMEOUT                    = 10
     PNL_CHECK_INTERVAL_SECONDS       = 1
     MIN_HOLD_SECONDS_FOR_PROFIT      = 300
     HEARTBEAT_INTERVAL               = 5
@@ -247,9 +247,10 @@ class Engine:
         self.state           = DBState(user)
         self.instruments     = None
         self.weekly_df       = None
-        self._last_valid_vix = None
-        self.ltp_cache       = {}
-        self.last_pnl        = 0.0
+        self._last_valid_vix  = None
+        self.ltp_cache        = {}
+        self.last_pnl         = 0.0
+        self.precomputed_plan = None
 
         self.logger.critical("ENGINE INIT - Starting authentication...")
         auth_success = self._authenticate()
@@ -492,7 +493,7 @@ class Engine:
 
     # ── MARKET DATA ───────────────────────────────────────────────────────
     def spot(self) -> Optional[float]:
-        time.sleep(0.3)
+        time.sleep(0.05)
         try:
             price = self.kite.quote(Config.SPOT_SYMBOL)[Config.SPOT_SYMBOL]["last_price"]
             if price:
@@ -506,7 +507,7 @@ class Engine:
             return self.state.data.get("last_spot")
 
     def vix(self) -> Optional[float]:
-        time.sleep(0.3)
+        time.sleep(0.05)
         try:
             quote = self.kite.quote(Config.VIX_SYMBOL)
             v     = quote[Config.VIX_SYMBOL]["last_price"]
@@ -1020,7 +1021,7 @@ class Engine:
                         {"order_id": oid, "qty": qty}
                     )
                     # Small pause between legs to reduce rejection rate at volatile open
-                    time.sleep(0.4)
+                    time.sleep(0.15)
                 else:
                     self.logger.critical(
                         f"Basket leg FAILED: {side} {sym} — "
@@ -1158,57 +1159,87 @@ class Engine:
         self.lock_target(today_target)
 
     # ── PREVIEW / BANNER ──────────────────────────────────────────────────
-    def preview_profit_calculation(self):
+    def preview_profit_calculation(self, plan: dict = None):
+        """
+        Shows projected daily target, proposed legs and premiums.
+        If a precomputed plan is passed (from precompute_entry_plan),
+        it reuses strikes/symbols from the plan instead of recalculating.
+        Called by startup_banner() and precompute_entry_plan().
+        """
         try:
-            live_spot = self.spot()
-            spot = live_spot or (
-                self.state.data.get("last_spot") or
-                self.state.data.get("entry_spot") or 24500
-            )
-            atm_strike = self.atm(spot)
-            vix_val    = self.vix()
-            ce_short     = self.find_short_strike(atm_strike, "CE")
-            pe_short     = self.find_short_strike(atm_strike, "PE")
-            ce_short_sym = self.find_option_symbol(ce_short, "CE")
-            pe_short_sym = self.find_option_symbol(pe_short, "PE")
-            ltps         = self.bulk_ltp([s for s in [ce_short_sym, pe_short_sym] if s])
-            ce_short_p   = ltps.get(ce_short_sym, 0.0) if ce_short_sym else 0.0
-            pe_short_p   = ltps.get(pe_short_sym, 0.0) if pe_short_sym else 0.0
-            if ce_short_p <= 0 or pe_short_p <= 0:
-                self.logger.warning("Short leg premiums not available - skipping preview")
-                return
-            ce_target     = ce_short_p * Config.HEDGE_PREMIUM_RATIO
-            pe_target     = pe_short_p * Config.HEDGE_PREMIUM_RATIO
-            common_target = min(ce_target, pe_target)
-            ce_hedge      = self.find_hedge_strike(ce_short, "CE", common_target, simulate=True)
-            pe_hedge      = self.find_hedge_strike(pe_short, "PE", common_target, simulate=True)
-            ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
-            pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
-            ltps_hedge    = self.bulk_ltp([s for s in [ce_hedge_sym, pe_hedge_sym] if s])
-            ce_hedge_p    = ltps_hedge.get(ce_hedge_sym, 0.0) if ce_hedge_sym else 0.0
-            pe_hedge_p    = ltps_hedge.get(pe_hedge_sym, 0.0) if pe_hedge_sym else 0.0
-            legs = []
-            if pe_hedge_sym:
-                legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
-                             "transaction_type": "BUY", "quantity": Config.LOT_SIZE})
-            if ce_hedge_sym:
-                legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
-                             "transaction_type": "BUY", "quantity": Config.LOT_SIZE})
-            if pe_short_sym:
-                legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
-                             "transaction_type": "SELL", "quantity": Config.LOT_SIZE})
-            if ce_short_sym:
-                legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
-                             "transaction_type": "SELL", "quantity": Config.LOT_SIZE})
-            actual_lots  = self.calculate_lots(legs) if legs else 0
-            preview_mode = actual_lots == 0
-            if preview_mode:
-                actual_lots = 1
+            vix_val = self.vix()
+            today   = datetime.now(Config.TIMEZONE).date()
+
+            # ── Use precomputed plan if available, else calculate fresh ───
+            if plan:
+                ce_short     = plan["ce_short"]
+                pe_short     = plan["pe_short"]
+                ce_hedge     = plan["ce_hedge"]
+                pe_hedge     = plan["pe_hedge"]
+                ce_short_sym = plan["ce_short_sym"]
+                pe_short_sym = plan["pe_short_sym"]
+                ce_hedge_sym = plan["ce_hedge_sym"]
+                pe_hedge_sym = plan["pe_hedge_sym"]
+                actual_lots  = plan["lots"]
+                preview_mode = actual_lots == 0
+                if preview_mode:
+                    actual_lots = 1
+            else:
+                live_spot = self.spot()
+                spot      = live_spot or (
+                    self.state.data.get("last_spot") or
+                    self.state.data.get("entry_spot") or 24500
+                )
+                atm_strike   = self.atm(spot)
+                ce_short     = self.find_short_strike(atm_strike, "CE")
+                pe_short     = self.find_short_strike(atm_strike, "PE")
+                ce_short_sym = self.find_option_symbol(ce_short, "CE")
+                pe_short_sym = self.find_option_symbol(pe_short, "PE")
+                if not ce_short_sym or not pe_short_sym:
+                    self.logger.warning("Short symbols not found - skipping preview")
+                    return
+                ltps_short    = self.bulk_ltp([ce_short_sym, pe_short_sym])
+                ce_short_p_   = ltps_short.get(ce_short_sym, 0.0)
+                pe_short_p_   = ltps_short.get(pe_short_sym, 0.0)
+                if ce_short_p_ <= 0 or pe_short_p_ <= 0:
+                    self.logger.warning("Short leg premiums not available - skipping preview")
+                    return
+                common_target = min(ce_short_p_, pe_short_p_) * Config.HEDGE_PREMIUM_RATIO
+                ce_hedge      = self.find_hedge_strike(ce_short, "CE", common_target, simulate=True)
+                pe_hedge      = self.find_hedge_strike(pe_short, "PE", common_target, simulate=True)
+                ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
+                pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
+                legs = []
+                if pe_hedge_sym:
+                    legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
+                                 "transaction_type": "BUY", "quantity": Config.LOT_SIZE})
+                if ce_hedge_sym:
+                    legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
+                                 "transaction_type": "BUY", "quantity": Config.LOT_SIZE})
+                if pe_short_sym:
+                    legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
+                                 "transaction_type": "SELL", "quantity": Config.LOT_SIZE})
+                if ce_short_sym:
+                    legs.append({"exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
+                                 "transaction_type": "SELL", "quantity": Config.LOT_SIZE})
+                actual_lots  = self.calculate_lots(legs) if legs else 0
+                preview_mode = actual_lots == 0
+                if preview_mode:
+                    actual_lots = 1
+
+            # ── Fetch live premiums for display ───────────────────────────
+            all_syms   = [s for s in [ce_short_sym, pe_short_sym, ce_hedge_sym, pe_hedge_sym] if s]
+            ltps_all   = self.bulk_ltp(all_syms)
+            ce_short_p = ltps_all.get(ce_short_sym, 0.0) if ce_short_sym else 0.0
+            pe_short_p = ltps_all.get(pe_short_sym, 0.0) if pe_short_sym else 0.0
+            ce_hedge_p = ltps_all.get(ce_hedge_sym, 0.0) if ce_hedge_sym else 0.0
+            pe_hedge_p = ltps_all.get(pe_hedge_sym, 0.0) if pe_hedge_sym else 0.0
+
             qty                = actual_lots * Config.LOT_SIZE
             net_credit_per_lot = ce_short_p + pe_short_p - ce_hedge_p - pe_hedge_p
             net_credit_total   = net_credit_per_lot * qty
-            today              = datetime.now(Config.TIMEZONE).date()
             remaining_days     = self.calculate_trading_days_including_today(today)
+
             if vix_val and vix_val <= Config.VIX_THRESHOLD_FOR_PERCENT_TARGET:
                 credit_based_today = (
                     net_credit_total / remaining_days if remaining_days > 0 else net_credit_total
@@ -1217,9 +1248,26 @@ class Engine:
                 target_mode      = "theta / days"
                 target_display   = f"+Rs{projected_target:,}"
             else:
-                _, estimated_final = (
-                    self.exact_margin_for_basket([dict(l, quantity=qty) for l in legs])
-                    if legs else (0, 0)
+                legs_for_margin = []
+                if pe_hedge_sym:
+                    legs_for_margin.append({"exchange": Config.EXCHANGE,
+                                            "tradingsymbol": pe_hedge_sym,
+                                            "transaction_type": "BUY", "quantity": qty})
+                if ce_hedge_sym:
+                    legs_for_margin.append({"exchange": Config.EXCHANGE,
+                                            "tradingsymbol": ce_hedge_sym,
+                                            "transaction_type": "BUY", "quantity": qty})
+                if pe_short_sym:
+                    legs_for_margin.append({"exchange": Config.EXCHANGE,
+                                            "tradingsymbol": pe_short_sym,
+                                            "transaction_type": "SELL", "quantity": qty})
+                if ce_short_sym:
+                    legs_for_margin.append({"exchange": Config.EXCHANGE,
+                                            "tradingsymbol": ce_short_sym,
+                                            "transaction_type": "SELL", "quantity": qty})
+                _, estimated_final  = (
+                    self.exact_margin_for_basket(legs_for_margin)
+                    if legs_for_margin else (0, 0)
                 )
                 capital_based_today = estimated_final * Config.PERCENT_TARGET_WHEN_VIX_HIGH
                 projected_target    = round(capital_based_today * 0.97)
@@ -1228,7 +1276,9 @@ class Engine:
                     f"+Rs{projected_target:,} "
                     f"(final margin approx Rs{round(estimated_final):,})"
                 )
-            mode     = "PREVIEW (ASSUMING 1 LOT)" if preview_mode else "LIVE PREVIEW"
+
+            plan_src = "PRECOMPUTED PLAN" if plan else "LIVE CALCULATION"
+            mode     = "PREVIEW (ASSUMING 1 LOT)" if preview_mode else f"LIVE PREVIEW [{plan_src}]"
             vix_note = f" | VIX: {vix_val:.2f} -> {target_mode}" if vix_val else ""
             self.logger.big_banner(
                 f"{mode}{vix_note} | PROJECTED DAILY TARGET: {target_display} | "
@@ -1265,6 +1315,11 @@ class Engine:
             })
 
     def startup_banner(self):
+        """
+        Prints market summary at 09:00 and 09:19.
+        At 09:19 it also passes the precomputed plan to preview so the
+        displayed lots/target exactly match what will be traded.
+        """
         try:
             now        = datetime.now(Config.TIMEZONE)
             spot       = self.spot() or 0
@@ -1327,7 +1382,8 @@ class Engine:
                 f"HEDGE PE: {pe_hedge or 'N/A'} ({pe_hedge_ltp})"
             )
             self.logger.info("=" * 80)
-            self.preview_profit_calculation()
+            # Pass precomputed plan if available so preview shows exact lots
+            self.preview_profit_calculation(plan=self.precomputed_plan)
         except Exception as e:
             self.logger.warning("startup_banner failed (non-fatal)", {
                 "error": str(e), "trace": traceback.format_exc()
@@ -1335,6 +1391,115 @@ class Engine:
 
     def atm(self, spot: float) -> int:
         return int(round(spot / 50) * 50)
+
+    # ── PRECOMPUTE ENTRY PLAN AT 09:19 ────────────────────────────────────
+    def precompute_entry_plan(self):
+        """
+        Called at 09:19 — 2 minutes before the entry window opens.
+        Calculates and locks: strikes, symbols, lot count.
+
+        KEY BENEFIT: lot count is calculated at 09:19 when margins are calm.
+        At 09:21 volatile open, Zerodha SPAN margins spike 2-3x causing
+        calculate_lots() to return 1 lot instead of the correct count.
+        By precomputing now, the volatile open margin spike is irrelevant.
+
+        Also eliminates 6-8 API calls from inside the entry window,
+        meaning enter() places the first order within 1-2 seconds of 09:21:00
+        instead of 15-20 seconds.
+        """
+        try:
+            self.logger.critical("PRECOMPUTING ENTRY PLAN AT 09:19...")
+
+            spot = self.spot()
+            if not spot:
+                self.logger.critical("PRECOMPUTE FAILED: spot fetch returned None")
+                return
+
+            atm          = self.atm(spot)
+            ce_short     = self.find_short_strike(atm, "CE")
+            pe_short     = self.find_short_strike(atm, "PE")
+            ce_short_sym = self.find_option_symbol(ce_short, "CE")
+            pe_short_sym = self.find_option_symbol(pe_short, "PE")
+
+            if not ce_short_sym or not pe_short_sym:
+                self.logger.critical("PRECOMPUTE FAILED: short symbols not found")
+                return
+
+            ltps       = self.bulk_ltp([ce_short_sym, pe_short_sym])
+            ce_p       = ltps.get(ce_short_sym, 0)
+            pe_p       = ltps.get(pe_short_sym, 0)
+
+            if ce_p <= 0 or pe_p <= 0:
+                self.logger.critical(
+                    "PRECOMPUTE FAILED: short premiums not live",
+                    {"ce_p": ce_p, "pe_p": pe_p}
+                )
+                return
+
+            common_target = min(ce_p, pe_p) * Config.HEDGE_PREMIUM_RATIO
+            ce_hedge      = self.find_hedge_strike(ce_short, "CE", common_target, simulate=False)
+            pe_hedge      = self.find_hedge_strike(pe_short, "PE", common_target, simulate=False)
+            ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
+            pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
+
+            # Build legs for lot sizing
+            legs = []
+            if pe_hedge_sym:
+                legs.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE
+                })
+            if ce_hedge_sym:
+                legs.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE
+                })
+            legs.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE
+            })
+            legs.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE
+            })
+
+            # Calculate lots NOW at 09:19 calm margins — NOT at 09:21 spike
+            lots = self.calculate_lots(legs)
+
+            self.precomputed_plan = {
+                "ce_short":        ce_short,
+                "pe_short":        pe_short,
+                "ce_hedge":        ce_hedge,
+                "pe_hedge":        pe_hedge,
+                "ce_short_sym":    ce_short_sym,
+                "pe_short_sym":    pe_short_sym,
+                "ce_hedge_sym":    ce_hedge_sym,
+                "pe_hedge_sym":    pe_hedge_sym,
+                "lots":            lots,
+                "precomputed_at":  datetime.now(Config.TIMEZONE).isoformat(),
+                "spot_at_precompute": spot,
+                "atm_at_precompute":  atm,
+            }
+
+            self.logger.critical("ENTRY PLAN PRECOMPUTED SUCCESSFULLY", {
+                "spot":          spot,
+                "atm":           atm,
+                "ce_short":      ce_short,
+                "pe_short":      pe_short,
+                "ce_hedge":      ce_hedge,
+                "pe_hedge":      pe_hedge,
+                "ce_short_sym":  ce_short_sym,
+                "pe_short_sym":  pe_short_sym,
+                "ce_hedge_sym":  ce_hedge_sym,
+                "pe_hedge_sym":  pe_hedge_sym,
+                "lots":          lots,
+                "qty":           lots * Config.LOT_SIZE,
+            })
+
+        except Exception as e:
+            self.logger.critical("PRECOMPUTE ENTRY PLAN FAILED (non-fatal)", {
+                "error": str(e), "trace": traceback.format_exc()
+            })
 
     # ── ENTER ─────────────────────────────────────────────────────────────
     def enter(self) -> bool:
@@ -1422,91 +1587,157 @@ class Engine:
                 self.logger.critical("Still no weekly options — cannot enter")
                 return False
 
-        spot = self.spot()
-        if not spot:
-            self.logger.critical("Spot fetch failed — cannot enter")
-            return False
+        # ── USE PRECOMPUTED PLAN (calculated at 09:19 with calm margins) ──
+        # NOTE: Never recalculate here, even if plan seems old.
+        # Recalculating inside the entry window means calling margin API
+        # and LTP fetches during volatile open — exactly the condition that
+        # caused the 1-lot bug. The 09:19 plan with calm margins is always
+        # preferable to a fresh calculation at 09:21 volatile open.
+        plan = self.precomputed_plan
+        if plan:
+            try:
+                precomputed_at = datetime.fromisoformat(plan["precomputed_at"])
+                if precomputed_at.tzinfo is None:
+                    precomputed_at = Config.TIMEZONE.localize(precomputed_at)
+                age_seconds = (datetime.now(Config.TIMEZONE) - precomputed_at).total_seconds()
+                self.logger.info(
+                    f"Precomputed plan age: {age_seconds:.0f}s — using as-is",
+                    {"age_seconds": round(age_seconds), "precomputed_at": plan["precomputed_at"]}
+                )
+            except Exception as age_err:
+                self.logger.warning("Could not read plan age (non-fatal)", {"error": str(age_err)})
 
-        atm_strike   = self.atm(spot)
-        ce_short     = self.find_short_strike(atm_strike, "CE")
-        pe_short     = self.find_short_strike(atm_strike, "PE")
-        ce_short_sym = self.find_option_symbol(ce_short, "CE")
-        pe_short_sym = self.find_option_symbol(pe_short, "PE")
+        if plan:
+            ce_short     = plan["ce_short"]
+            pe_short     = plan["pe_short"]
+            ce_hedge     = plan["ce_hedge"]
+            pe_hedge     = plan["pe_hedge"]
+            ce_short_sym = plan["ce_short_sym"]
+            pe_short_sym = plan["pe_short_sym"]
+            ce_hedge_sym = plan["ce_hedge_sym"]
+            pe_hedge_sym = plan["pe_hedge_sym"]
+            lots         = plan["lots"]
+            atm_strike   = plan.get("atm_at_precompute", self.atm(plan.get("spot_at_precompute", 24500)))
+            self.logger.critical("USING PRECOMPUTED ENTRY PLAN", {
+                "precomputed_at":  plan["precomputed_at"],
+                "ce_short":        ce_short,
+                "pe_short":        pe_short,
+                "ce_hedge":        ce_hedge,
+                "pe_hedge":        pe_hedge,
+                "ce_short_sym":    ce_short_sym,
+                "pe_short_sym":    pe_short_sym,
+                "ce_hedge_sym":    ce_hedge_sym,
+                "pe_hedge_sym":    pe_hedge_sym,
+                "lots":            lots,
+                "qty":             lots * Config.LOT_SIZE,
+            })
+        else:
+            # Fallback: calculate fresh if no precomputed plan exists
+            self.logger.critical(
+                "NO PRECOMPUTED PLAN — calculating fresh inside entry window "
+                "(margin spike risk at volatile open)"
+            )
+            spot = self.spot()
+            if not spot:
+                self.logger.critical("Spot fetch failed — cannot enter")
+                return False
+
+            atm_strike   = self.atm(spot)
+            ce_short     = self.find_short_strike(atm_strike, "CE")
+            pe_short     = self.find_short_strike(atm_strike, "PE")
+            ce_short_sym = self.find_option_symbol(ce_short, "CE")
+            pe_short_sym = self.find_option_symbol(pe_short, "PE")
+
+            if not ce_short_sym or not pe_short_sym:
+                self.logger.critical("Option symbols not found for short strikes — cannot enter")
+                return False
+
+            ltps_short    = self.bulk_ltp([ce_short_sym, pe_short_sym])
+            ce_short_p_   = ltps_short.get(ce_short_sym, 0)
+            pe_short_p_   = ltps_short.get(pe_short_sym, 0)
+
+            if ce_short_p_ <= 0 or pe_short_p_ <= 0:
+                self.logger.warning("Short premiums not live — cannot enter", {
+                    "ce_short_p": ce_short_p_, "pe_short_p": pe_short_p_
+                })
+                return False
+
+            common_target = min(ce_short_p_, pe_short_p_) * Config.HEDGE_PREMIUM_RATIO
+            ce_hedge      = self.find_hedge_strike(ce_short, "CE", common_target, simulate=False)
+            pe_hedge      = self.find_hedge_strike(pe_short, "PE", common_target, simulate=False)
+            ce_hedge_sym  = self.find_option_symbol(ce_hedge, "CE")
+            pe_hedge_sym  = self.find_option_symbol(pe_hedge, "PE")
+
+            legs = []
+            if pe_hedge_sym:
+                legs.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE, "product": "MIS"
+                })
+            if ce_hedge_sym:
+                legs.append({
+                    "exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
+                    "transaction_type": "BUY", "quantity": Config.LOT_SIZE, "product": "MIS"
+                })
+            legs.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE, "product": "MIS"
+            })
+            legs.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
+                "transaction_type": "SELL", "quantity": Config.LOT_SIZE, "product": "MIS"
+            })
+
+            lots = self.calculate_lots(legs)
 
         self.logger.critical("STRIKE SELECTION", {
-            "atm":             atm_strike,
-            "ce_short_strike": ce_short,
-            "ce_short_sym":    ce_short_sym,
-            "pe_short_strike": pe_short,
-            "pe_short_sym":    pe_short_sym,
+            "atm":           atm_strike,
+            "ce_short":      ce_short,  "ce_short_sym":  ce_short_sym,
+            "pe_short":      pe_short,  "pe_short_sym":  pe_short_sym,
+            "ce_hedge":      ce_hedge,  "ce_hedge_sym":  ce_hedge_sym,
+            "pe_hedge":      pe_hedge,  "pe_hedge_sym":  pe_hedge_sym,
+            "source":        "precomputed" if plan else "fresh_calculation",
         })
 
         if not ce_short_sym or not pe_short_sym:
             self.logger.critical("Option symbols not found for short strikes — cannot enter")
             return False
 
-        ltps_short = self.bulk_ltp([ce_short_sym, pe_short_sym])
-        ce_short_p = ltps_short.get(ce_short_sym, 0)
-        pe_short_p = ltps_short.get(pe_short_sym, 0)
-
-        if ce_short_p <= 0 or pe_short_p <= 0:
-            self.logger.warning("Short premiums not live — cannot enter", {
-                "ce_short_p": ce_short_p, "pe_short_p": pe_short_p
-            })
-            return False
-
-        ce_target     = ce_short_p * Config.HEDGE_PREMIUM_RATIO
-        pe_target     = pe_short_p * Config.HEDGE_PREMIUM_RATIO
-        common_target = min(ce_target, pe_target)
-
-        ce_hedge     = self.find_hedge_strike(ce_short, "CE", common_target, simulate=False)
-        pe_hedge     = self.find_hedge_strike(pe_short, "PE", common_target, simulate=False)
-        ce_hedge_sym = self.find_option_symbol(ce_hedge, "CE")
-        pe_hedge_sym = self.find_option_symbol(pe_hedge, "PE")
-
-        ltps_hedge = self.bulk_ltp([s for s in [ce_hedge_sym, pe_hedge_sym] if s])
-        ce_hedge_p = ltps_hedge.get(ce_hedge_sym, 0.0) if ce_hedge_sym else 0.0
-        pe_hedge_p = ltps_hedge.get(pe_hedge_sym, 0.0) if pe_hedge_sym else 0.0
-
         if not ce_hedge_sym:
             self.logger.critical("CE hedge symbol not found — proceeding without CE hedge")
         if not pe_hedge_sym:
             self.logger.critical("PE hedge symbol not found — proceeding without PE hedge")
 
-        legs = []
-        if pe_hedge_sym:
-            legs.append({
-                "exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
-                "transaction_type": "BUY", "quantity": Config.LOT_SIZE, "product": "MIS"
-            })
-        if ce_hedge_sym:
-            legs.append({
-                "exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
-                "transaction_type": "BUY", "quantity": Config.LOT_SIZE, "product": "MIS"
-            })
-        legs.append({
-            "exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
-            "transaction_type": "SELL", "quantity": Config.LOT_SIZE, "product": "MIS"
-        })
-        legs.append({
-            "exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
-            "transaction_type": "SELL", "quantity": Config.LOT_SIZE, "product": "MIS"
-        })
+        # Fetch live premiums for entry_premiums record (display/target calc only)
+        all_syms   = [s for s in [ce_short_sym, pe_short_sym, ce_hedge_sym, pe_hedge_sym] if s]
+        ltps_live  = self.bulk_ltp(all_syms)
+        ce_hedge_p = ltps_live.get(ce_hedge_sym, 0.0) if ce_hedge_sym else 0.0
+        pe_hedge_p = ltps_live.get(pe_hedge_sym, 0.0) if pe_hedge_sym else 0.0
 
-        lots = self.calculate_lots(legs)
         if lots == 0:
             self.logger.critical("Lot calculation returned 0 — cannot enter")
             return False
 
         qty                          = lots * Config.LOT_SIZE
-        initial_margin, final_margin = self.exact_margin_for_basket(
-            [dict(l, quantity=qty) for l in legs]
-        )
-        self.state.data["final_margin_used"] = final_margin
-
-        capital_before = self.capital_available()
-        self.logger.info("CAPITAL BEFORE ENTRY", {"available_Rs": round(capital_before)})
-
+        legs_for_margin = []
+        if pe_hedge_sym:
+            legs_for_margin.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": pe_hedge_sym,
+                "transaction_type": "BUY", "quantity": qty, "product": "MIS"
+            })
+        if ce_hedge_sym:
+            legs_for_margin.append({
+                "exchange": Config.EXCHANGE, "tradingsymbol": ce_hedge_sym,
+                "transaction_type": "BUY", "quantity": qty, "product": "MIS"
+            })
+        legs_for_margin.append({
+            "exchange": Config.EXCHANGE, "tradingsymbol": pe_short_sym,
+            "transaction_type": "SELL", "quantity": qty, "product": "MIS"
+        })
+        legs_for_margin.append({
+            "exchange": Config.EXCHANGE, "tradingsymbol": ce_short_sym,
+            "transaction_type": "SELL", "quantity": qty, "product": "MIS"
+        })
         buy_legs  = []
         sell_legs = []
         if pe_hedge_sym:
@@ -1557,16 +1788,28 @@ class Engine:
 
         self.logger.critical(f"ALL {len(executed)} LEGS FILLED SUCCESSFULLY")
 
+        # ── MARGIN & CAPITAL LOGGING — after orders, not before ───────────
+        # Done here so zero API calls delay order placement.
+        # actual_used_capital() reflects real blocked margin post-fill.
+        initial_margin, final_margin = self.exact_margin_for_basket(legs_for_margin)
+        capital_after                = self.capital_available()
+        actual_margin_used           = self.actual_used_capital()
+
+        self.logger.info("POST-ENTRY MARGIN & CAPITAL", {
+            "basket_api_initial_margin": round(initial_margin),
+            "basket_api_final_margin":   round(final_margin),
+            "actual_margin_used":        round(actual_margin_used),
+            "capital_remaining":         round(capital_after),
+        })
+
+        self.state.data["final_margin_used"]          = final_margin
+        self.state.data["exact_margin_used_by_trade"] = actual_margin_used
+
         for sym, side, order_id in executed:
             self.state.data.setdefault("bot_order_ids", []).append(order_id)
 
-        actual_margin_used                            = final_margin
-        self.state.data["exact_margin_used_by_trade"] = actual_margin_used
         margin_per_lot = final_margin / lots if lots > 0 else 0
-
-        self.logger.info("MARGIN LOCKED FROM PRE-TRADE BASKET API", {
-            "initial_margin": round(initial_margin),
-            "final_margin":   round(final_margin),
+        self.logger.info("MARGIN PER LOT", {
             "lots":           lots,
             "margin_per_lot": round(margin_per_lot),
             "note":           "final_margin = net after hedge offsets, matches Zerodha console",
@@ -2319,7 +2562,7 @@ class TradingApplication:
                             except Exception as e:
                                 self.logger.error("Instrument pre-load failed", {"error": str(e)})
 
-                    # ── EARLY MARKET PREVIEW AT 09:19 ─────────────────────
+                    # ── EARLY MARKET PREVIEW + PRECOMPUTE AT 09:19 ────────
                     if (dtime(9, 19) <= current_time < dtime(9, 20) and
                             not self._early_0919_logged):
                         self.logger.big_banner(
@@ -2330,6 +2573,7 @@ class TradingApplication:
                                     self.engine.weekly_df is None):
                                 self.engine.load_instruments()
                                 self.engine.load_weekly_df()
+                            self.engine.precompute_entry_plan()
                             self.engine.startup_banner()
                         except Exception as e:
                             self.logger.error("09:19 preview failed (non-fatal)", {
@@ -2543,7 +2787,10 @@ class TradingApplication:
                         self.engine.save_periodic_pnl_snapshot()
                         self._last_snapshot_time = time.time()
 
-                    time.sleep(1.0)
+                    if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
+                        time.sleep(0.15)
+                    else:
+                        time.sleep(1.0)
 
                 except KeyboardInterrupt:
                     raise
