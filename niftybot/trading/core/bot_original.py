@@ -2,12 +2,10 @@ import time
 import sys
 import traceback
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time as dtime, timedelta
 from typing import Dict, List, Tuple, Optional
 import pytz
 import pandas as pd
-import statistics
 import os
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -52,20 +50,21 @@ class Config:
     VIX_MAX                          = 25.0
     VIX_THRESHOLD_FOR_PERCENT_TARGET = 12
     PERCENT_TARGET_WHEN_VIX_HIGH     = 0.020
-    ADJUSTMENT_TRIGGER_POINTS        = 50
+    ADJUSTMENT_TRIGGER_POINTS        = 100
     ADJUSTMENT_CUTOFF_TIME           = dtime(13, 30)
     MAX_ADJUSTMENTS_PER_SIDE_PER_DAY = 1
     MIN_HEDGE_GAP                    = 300
     TIMEZONE                         = pytz.timezone("Asia/Kolkata")
     MAX_TOKEN_ATTEMPTS               = 10
-    MAX_RETRIES                      = 3
-    RETRY_DELAY                      = 2
+    MAX_RETRIES                      = 1   # PATCHED: reduced from 3 to 2
+    RETRY_DELAY                      = 1   # PATCHED: reduced from 2 to 1
     ORDER_TIMEOUT                    = 35
     PNL_CHECK_INTERVAL_SECONDS       = 1
-    MIN_HOLD_SECONDS_FOR_PROFIT      = 300   # 5 minutes (was 1800 — reduced to prevent missing target)
+    MIN_HOLD_SECONDS_FOR_PROFIT      = 300
     HEARTBEAT_INTERVAL               = 5
     PNL_CACHE_TTL                    = 3
     PERIODIC_PNL_SNAPSHOT_INTERVAL   = 1
+    MIN_SECONDS_BEFORE_ADJUSTMENT    = 300
 
 
 INDIA_HOLIDAYS     = holidays.India()
@@ -300,7 +299,7 @@ class Engine:
         direction   = 'SHORT' if side == 'SELL' else 'LONG'
         option_type = 'CE' if 'CE' in symbol else 'PE' if 'PE' in symbol else None
 
-        if order_id:
+        if order_id and order_id != "ALREADY_FILLED":
             existing = Trade.objects.filter(
                 user=self.user,
                 order_id=str(order_id)
@@ -330,7 +329,7 @@ class Engine:
             entry_time=timezone.now(),
             status='EXECUTED',
             broker='ZERODHA',
-            order_id=str(order_id) if order_id else None,
+            order_id=str(order_id) if order_id and order_id != "ALREADY_FILLED" else None,
             metadata={'order_id': order_id, 'side': side},
             algorithm_name='Hedged Short Strangle'
         )
@@ -359,6 +358,41 @@ class Engine:
         except Exception as e:
             self.logger.error(f"Failed to close trade for {symbol}", {"error": str(e)})
             return Decimal('0.00')
+
+    # ── POSITION CHECK HELPERS (PATCHED) ──────────────────────────────────
+    def _get_net_position(self, symbol: str) -> Optional[int]:
+        """
+        Returns current net MIS quantity for symbol.
+        Positive = long, Negative = short, 0 = flat, None = API failure.
+        """
+        try:
+            net = self.kite.positions()["net"]
+            for p in net:
+                if p["tradingsymbol"] == symbol and p["product"] == "MIS":
+                    return p["quantity"]
+            return 0
+        except Exception as e:
+            self.logger.warning(f"_get_net_position failed for {symbol}", {"error": str(e)})
+            return None
+
+    def _already_filled(self, symbol: str, side: str, expected_qty: int) -> bool:
+        """
+        Returns True if position already exists at expected quantity.
+        Prevents duplicate orders on retry after REJECTED-but-actually-filled.
+        side = BUY  → expects positive qty
+        side = SELL → expects negative qty
+        """
+        pos = self._get_net_position(symbol)
+        if pos is None:
+            return False  # Unknown → let order proceed
+        expected_sign = expected_qty if side == "BUY" else -expected_qty
+        if pos == expected_sign:
+            self.logger.info(
+                f"_already_filled: {symbol} already at qty={pos} — skipping order",
+                {"side": side, "expected_qty": expected_qty}
+            )
+            return True
+        return False
 
     # ── CAPITAL ───────────────────────────────────────────────────────────
     def capital_available(self) -> float:
@@ -767,16 +801,29 @@ class Engine:
         })
         return final_lots
 
-    # ── SINGLE ORDER ─────────────────────────────────────────────────────
+    # ── SINGLE ORDER (PATCHED) ────────────────────────────────────────────
     def order(self, symbol: str, side: str, qty: int) -> Tuple[bool, str, float]:
+        """
+        Place a single MIS MARKET order.
+        PATCHED: checks _already_filled() before each attempt to prevent
+        duplicate orders when Zerodha rejects but actually fills.
+        """
         filled_price = 0.0
-        for attempt in range(Config.MAX_RETRIES):
+
+        for attempt in range(1, Config.MAX_RETRIES + 1):
+
+            # ── Pre-flight: don't re-order if position already exists ──────
+            if self._already_filled(symbol, side, qty):
+                ltp = self.bulk_ltp([symbol]).get(symbol, 0.0)
+                self._get_or_create_trade(symbol, side, qty, ltp, order_id="ALREADY_FILLED")
+                return True, "ALREADY_FILLED", ltp
+
+            self.logger.info(
+                f"PLACING ORDER attempt {attempt}/{Config.MAX_RETRIES}",
+                {"symbol": symbol, "side": side, "qty": qty}
+            )
+
             try:
-                self.logger.info(
-                    f"PLACING ORDER attempt {attempt+1}/{Config.MAX_RETRIES}", {
-                        "symbol": symbol, "side": side, "qty": qty
-                    }
-                )
                 order_id = self.kite.place_order(
                     variety=self.kite.VARIETY_REGULAR,
                     exchange=Config.EXCHANGE,
@@ -784,195 +831,177 @@ class Engine:
                     transaction_type=getattr(self.kite, f"TRANSACTION_TYPE_{side}"),
                     quantity=qty,
                     product=self.kite.PRODUCT_MIS,
-                    order_type=self.kite.ORDER_TYPE_MARKET
+                    order_type=self.kite.ORDER_TYPE_MARKET,
                 )
-                self.logger.info(f"Order placed successfully - ID: {order_id}")
-                start_time = time.time()
-                while time.time() - start_time < Config.ORDER_TIMEOUT:
-                    history = self.kite.order_history(order_id)
-                    if not history:
-                        time.sleep(0.5)
-                        continue
-                    last_status = history[-1]['status']
-                    self.logger.info(f"Order status: {last_status}")
-                    if last_status == 'COMPLETE':
-                        filled_price = history[-1].get('average_price', 0.0)
-                        if filled_price == 0.0:
-                            self.logger.warning(
-                                f"Order completed but average_price 0 for {symbol} - using LTP fallback"
-                            )
-                            filled_price = self.bulk_ltp([symbol]).get(symbol, 0.0)
+                self.logger.info(f"Order accepted by exchange — ID: {order_id}")
 
-                        self._get_or_create_trade(symbol, side, qty, filled_price, order_id)
-                        self.logger.trade(
-                            f"{side}_{symbol}", symbol,
-                            qty if side == "BUY" else -qty,
-                            filled_price, f"order_id:{order_id}"
-                        )
-                        return True, order_id, filled_price
-                    elif last_status in ['REJECTED', 'CANCELLED']:
-                        reason = history[-1].get('status_message', 'No reason provided')
-                        self.logger.critical(
-                            f"ORDER {last_status} for {symbol} - Reason: {reason}"
-                        )
-                        raise Exception(f"Order {last_status}: {reason}")
+            except Exception as place_err:
+                self.logger.error(
+                    f"Order placement API call failed attempt {attempt}",
+                    {"symbol": symbol, "side": side, "error": str(place_err)}
+                )
+                if attempt < Config.MAX_RETRIES:
+                    time.sleep(Config.RETRY_DELAY * attempt)
+                continue
+
+            # ── Poll for completion ────────────────────────────────────────
+            start = time.time()
+            order_done = False
+            while time.time() - start < Config.ORDER_TIMEOUT:
+                try:
+                    history = self.kite.order_history(order_id)
+                except Exception:
                     time.sleep(0.5)
-                self.logger.error(
-                    f"Order timeout - not completed within {Config.ORDER_TIMEOUT}s"
-                )
-                raise Exception("Order timeout")
-            except Exception as e:
-                error_msg = str(e)
-                self.logger.error(
-                    f"Order placement failed for {symbol} ({side}) attempt {attempt+1}", {
-                        "error": error_msg, "trace": traceback.format_exc()
-                    }
-                )
-                if attempt < Config.MAX_RETRIES - 1:
-                    time.sleep(Config.RETRY_DELAY * (attempt + 1))
-                else:
-                    self.logger.critical(
-                        f"FINAL FAILURE: Giving up on {symbol} after {Config.MAX_RETRIES} attempts"
+                    continue
+
+                if not history:
+                    time.sleep(0.5)
+                    continue
+
+                last   = history[-1]
+                status = last["status"]
+                self.logger.info(f"Order {order_id} status: {status}")
+
+                if status == "COMPLETE":
+                    filled_price = last.get("average_price", 0.0)
+                    if filled_price == 0.0:
+                        self.logger.warning(
+                            f"average_price=0 for {symbol} — using LTP fallback"
+                        )
+                        filled_price = self.bulk_ltp([symbol]).get(symbol, 0.0)
+
+                    self._get_or_create_trade(symbol, side, qty, filled_price, order_id)
+                    self.logger.trade(
+                        f"{side}_{symbol}", symbol,
+                        qty if side == "BUY" else -qty,
+                        filled_price, f"order_id:{order_id}"
                     )
-                    return False, "", 0.0
+                    return True, order_id, filled_price
+
+                elif status in ("REJECTED", "CANCELLED"):
+                    reason = last.get("status_message", "No reason provided")
+                    self.logger.error(
+                        f"Order {status} for {symbol} — {reason}",
+                        {"order_id": order_id}
+                    )
+                    order_done = True  # Break inner poll → outer loop retries
+                    break
+
+                time.sleep(0.5)
+
+            else:
+                # Timeout — check actual position before retrying
+                self.logger.error(
+                    f"Order {order_id} timeout after {Config.ORDER_TIMEOUT}s — "
+                    "checking actual position before retry"
+                )
+                if self._already_filled(symbol, side, qty):
+                    ltp = self.bulk_ltp([symbol]).get(symbol, 0.0)
+                    self._get_or_create_trade(symbol, side, qty, ltp, order_id)
+                    return True, order_id, ltp
+
+            if attempt < Config.MAX_RETRIES:
+                time.sleep(Config.RETRY_DELAY * attempt)
+
+        self.logger.critical(
+            f"FINAL FAILURE: {symbol} {side} after {Config.MAX_RETRIES} attempts"
+        )
         return False, "", 0.0
 
-    # ── BASKET ORDER ──────────────────────────────────────────────────────
+    # ── BASKET ORDER (PATCHED) ────────────────────────────────────────────
     def order_basket(
-        self, legs: List[Tuple[str, str]], qty: int
+        self,
+        legs: List[Tuple[str, str]],
+        qty: int,
     ) -> Tuple[bool, List[str], Dict[str, float]]:
-        order_ids     = []
-        filled_prices = {}
+        """
+        Place a basket of orders SEQUENTIALLY — not in parallel.
+        PATCHED: removed ThreadPoolExecutor which caused the duplicate-order
+        explosion during the volatile 09:21 open window.
 
-        for attempt in range(Config.MAX_RETRIES):
-            try:
-                order_ids     = []
-                filled_prices = {}
-                placed        = {}
+        Why sequential?
+          Parallel threads + Zerodha rejections + retry logic = exponential
+          duplicate orders for the same instruments. Sequential placement with
+          a small inter-leg delay eliminates this entirely.
+        """
+        MAX_BASKET_ATTEMPTS = 2
 
-                self.logger.info(
-                    f"PLACING BASKET attempt {attempt+1}/{Config.MAX_RETRIES}", {
-                        "legs":        [{"symbol": s, "side": sd} for s, sd in legs],
-                        "qty_per_leg": qty,
-                        "total_legs":  len(legs)
-                    }
-                )
+        for basket_attempt in range(1, MAX_BASKET_ATTEMPTS + 1):
+            self.logger.info(
+                f"BASKET attempt {basket_attempt}/{MAX_BASKET_ATTEMPTS}",
+                {
+                    "legs": [{"symbol": s, "side": sd} for s, sd in legs],
+                    "qty":  qty,
+                }
+            )
 
-                futures_map = {}
-                with ThreadPoolExecutor(max_workers=len(legs)) as executor:
-                    for sym, side in legs:
-                        future = executor.submit(
-                            self.kite.place_order,
-                            variety=self.kite.VARIETY_REGULAR,
-                            exchange=Config.EXCHANGE,
-                            tradingsymbol=sym,
-                            transaction_type=getattr(
-                                self.kite, f"TRANSACTION_TYPE_{side}"
-                            ),
-                            quantity=qty,
-                            product=self.kite.PRODUCT_MIS,
-                            order_type=self.kite.ORDER_TYPE_MARKET
-                        )
-                        futures_map[future] = (sym, side)
+            order_ids     = []
+            filled_prices = {}
+            placed_legs   = []  # Track placed legs for cleanup on failure
+            all_ok        = True
 
-                    for future in as_completed(futures_map):
-                        sym, side = futures_map[future]
-                        try:
-                            oid = future.result()
-                            placed[sym] = (side, oid)
-                            self.logger.info(
-                                f"Basket leg accepted: {side} {sym} → order_id={oid}"
-                            )
-                        except Exception as place_err:
-                            self.logger.critical(
-                                f"Basket leg FAILED at placement: {side} {sym}", {
-                                    "error": str(place_err)
-                                }
-                            )
-                            for s2, (sd2, oid2) in placed.items():
-                                opp = "SELL" if sd2 == "BUY" else "BUY"
-                                self.logger.critical(
-                                    f"Basket placement cleanup: reversing {sd2} {s2}"
-                                )
-                                try:
-                                    self.order(s2, opp, qty)
-                                except Exception as cleanup_err:
-                                    self.logger.critical(
-                                        f"Basket cleanup also failed for {s2}",
-                                        {"error": str(cleanup_err)}
-                                    )
-                            raise place_err
+            for sym, side in legs:
 
-                start_time = time.time()
-                pending    = dict(placed)
+                # ── Skip if already filled (idempotency guard) ────────────
+                if self._already_filled(sym, side, qty):
+                    ltp = self.bulk_ltp([sym]).get(sym, 0.0)
+                    filled_prices[sym] = ltp
+                    order_ids.append("ALREADY_FILLED")
+                    self.logger.info(f"Leg already filled — skipping: {side} {sym}")
+                    continue
 
-                while pending and time.time() - start_time < Config.ORDER_TIMEOUT:
-                    for sym in list(pending.keys()):
-                        side, oid = pending[sym]
-                        try:
-                            history = self.kite.order_history(oid)
-                        except Exception:
-                            continue
-                        if not history:
-                            continue
-                        last_status = history[-1]['status']
-                        self.logger.info(
-                            f"Basket leg status: {side} {sym} → {last_status}"
-                        )
-                        if last_status == 'COMPLETE':
-                            fp = history[-1].get('average_price', 0.0)
-                            if fp == 0.0:
-                                self.logger.warning(
-                                    f"Basket leg average_price=0 for {sym} — using LTP fallback"
-                                )
-                                fp = self.bulk_ltp([sym]).get(sym, 0.0)
+                # ── Place this leg ────────────────────────────────────────
+                self.logger.info(f"Placing basket leg: {side} {sym} qty={qty}")
+                success, oid, fp = self.order(sym, side, qty)
 
-                            order_ids.append(oid)
-                            filled_prices[sym] = fp
-
-                            self._get_or_create_trade(sym, side, qty, fp, oid)
-                            self.logger.trade(
-                                f"{side}_{sym}", sym,
-                                qty if side == "BUY" else -qty,
-                                fp, f"order_id:{oid}"
-                            )
-                            del pending[sym]
-                        elif last_status in ['REJECTED', 'CANCELLED']:
-                            reason = history[-1].get('status_message', 'No reason')
-                            raise Exception(
-                                f"Basket leg {last_status}: {sym} — {reason}"
-                            )
-                    if pending:
-                        time.sleep(0.5)
-
-                if pending:
-                    raise Exception(
-                        f"Basket order timeout — still pending: {list(pending.keys())}"
+                if success:
+                    order_ids.append(oid)
+                    filled_prices[sym] = fp
+                    placed_legs.append((sym, side, oid))
+                    self.logger.info(
+                        f"Basket leg FILLED: {side} {sym} @ {fp:.2f}",
+                        {"order_id": oid}
                     )
+                    # Small pause between legs — reduces Zerodha rejection rate
+                    # during the high-activity 09:21 open window
+                    time.sleep(0.4)
 
+                else:
+                    self.logger.critical(
+                        f"Basket leg FAILED: {side} {sym} — "
+                        f"reversing {len(placed_legs)} already-placed leg(s)"
+                    )
+                    # Reverse already-placed legs immediately
+                    for placed_sym, placed_side, _ in placed_legs:
+                        reverse_side = "SELL" if placed_side == "BUY" else "BUY"
+                        self.logger.critical(
+                            f"CLEANUP: reversing {placed_side} → {reverse_side} {placed_sym}"
+                        )
+                        rev_ok, _, _ = self.order(placed_sym, reverse_side, qty)
+                        if not rev_ok:
+                            self.logger.critical(
+                                f"CLEANUP FAILED for {placed_sym} — "
+                                "manual intervention required"
+                            )
+                    all_ok = False
+                    break  # Don't continue placing more legs
+
+            if all_ok:
                 self.logger.info(
-                    f"Basket order fully complete — {len(filled_prices)} legs filled", {
-                        "filled_prices": {
-                            k: round(v, 2) for k, v in filled_prices.items()
-                        }
-                    }
+                    f"Basket fully filled — {len(filled_prices)} legs",
+                    {"prices": {k: round(v, 2) for k, v in filled_prices.items()}}
                 )
                 return True, order_ids, filled_prices
 
-            except Exception as e:
-                self.logger.error(
-                    f"Basket order attempt {attempt+1} failed", {
-                        "error": str(e), "trace": traceback.format_exc()
-                    }
+            if basket_attempt < MAX_BASKET_ATTEMPTS:
+                self.logger.warning(
+                    f"Basket attempt {basket_attempt} failed — waiting 3s before retry"
                 )
-                if attempt < Config.MAX_RETRIES - 1:
-                    time.sleep(Config.RETRY_DELAY * (attempt + 1))
-                else:
-                    self.logger.critical(
-                        f"Basket order FINAL FAILURE after {Config.MAX_RETRIES} attempts"
-                    )
-                    return False, [], {}
+                time.sleep(3)
 
+        self.logger.critical(
+            f"Basket FINAL FAILURE after {MAX_BASKET_ATTEMPTS} attempts"
+        )
         return False, [], {}
 
     def cleanup(self, executed: List[Tuple[str, str, str]], qty: int):
@@ -1607,9 +1636,38 @@ class Engine:
     def check_and_adjust_defensive(self) -> bool:
         if not self.state.data["trade_active"]:
             return False
+
         now_time = datetime.now(Config.TIMEZONE).time()
         if now_time >= Config.ADJUSTMENT_CUTOFF_TIME:
             return False
+
+        entry_time = self.state.data.get("entry_time")
+        if entry_time:
+            if isinstance(entry_time, str):
+                try:
+                    entry_time = datetime.fromisoformat(entry_time)
+                    if entry_time.tzinfo is None:
+                        entry_time = Config.TIMEZONE.localize(entry_time)
+                except Exception as parse_err:
+                    self.logger.warning(
+                        f"Adjustment grace: could not parse entry_time: {parse_err}"
+                    )
+                    entry_time = None
+            if entry_time:
+                seconds_since_entry = (
+                    datetime.now(Config.TIMEZONE) - entry_time
+                ).total_seconds()
+                if seconds_since_entry < Config.MIN_SECONDS_BEFORE_ADJUSTMENT:
+                    self.logger.info(
+                        "ADJUSTMENT SKIPPED — within grace period after entry", {
+                            "seconds_since_entry":  round(seconds_since_entry),
+                            "grace_period_seconds": Config.MIN_SECONDS_BEFORE_ADJUSTMENT,
+                            "remaining_seconds":    round(
+                                Config.MIN_SECONDS_BEFORE_ADJUSTMENT - seconds_since_entry
+                            ),
+                        }
+                    )
+                    return False
 
         today = datetime.now(Config.TIMEZONE).date()
         if self.state.data.get("last_adjustment_date") != str(today):
@@ -1648,6 +1706,38 @@ class Engine:
                         "CE adjustment: failed to buy back old short — position unchanged"
                     )
                 else:
+                    time.sleep(1)
+                    try:
+                        net_pos = self.kite.positions()["net"]
+                        actual_qty = next(
+                            (p["quantity"] for p in net_pos
+                             if p["tradingsymbol"] == old_sym and p["product"] == "MIS"),
+                            None
+                        )
+                        if actual_qty is not None and actual_qty != 0:
+                            self.logger.critical(
+                                f"CE PARTIAL FILL DETECTED — {old_sym} still has qty={actual_qty}",
+                                {"expected": 0, "actual": actual_qty}
+                            )
+                            residual      = abs(actual_qty)
+                            residual_side = "BUY" if actual_qty < 0 else "SELL"
+                            res_ok, _, _  = self.order(old_sym, residual_side, residual)
+                            if res_ok:
+                                self.logger.info(
+                                    f"CE residual qty={residual} closed successfully"
+                                )
+                            else:
+                                self.logger.critical(
+                                    f"CE residual close FAILED for {old_sym} — "
+                                    f"manual intervention may be required"
+                                )
+                    except Exception as qty_check_err:
+                        self.logger.warning(
+                            "CE post-buyback qty check failed (non-fatal)", {
+                                "error": str(qty_check_err)
+                            }
+                        )
+
                     for leg in algo_legs.values():
                         if leg["symbol"] == old_sym and leg["status"] == "OPEN":
                             leg["exit_price"] = filled_p
@@ -1747,6 +1837,38 @@ class Engine:
                         "PE adjustment: failed to buy back old short — position unchanged"
                     )
                 else:
+                    time.sleep(1)
+                    try:
+                        net_pos = self.kite.positions()["net"]
+                        actual_qty = next(
+                            (p["quantity"] for p in net_pos
+                             if p["tradingsymbol"] == old_sym and p["product"] == "MIS"),
+                            None
+                        )
+                        if actual_qty is not None and actual_qty != 0:
+                            self.logger.critical(
+                                f"PE PARTIAL FILL DETECTED — {old_sym} still has qty={actual_qty}",
+                                {"expected": 0, "actual": actual_qty}
+                            )
+                            residual      = abs(actual_qty)
+                            residual_side = "BUY" if actual_qty < 0 else "SELL"
+                            res_ok, _, _  = self.order(old_sym, residual_side, residual)
+                            if res_ok:
+                                self.logger.info(
+                                    f"PE residual qty={residual} closed successfully"
+                                )
+                            else:
+                                self.logger.critical(
+                                    f"PE residual close FAILED for {old_sym} — "
+                                    f"manual intervention may be required"
+                                )
+                    except Exception as qty_check_err:
+                        self.logger.warning(
+                            "PE post-buyback qty check failed (non-fatal)", {
+                                "error": str(qty_check_err)
+                            }
+                        )
+
                     for leg in algo_legs.values():
                         if leg["symbol"] == old_sym and leg["status"] == "OPEN":
                             leg["exit_price"] = filled_p
@@ -1837,22 +1959,11 @@ class Engine:
 
     # ── EXIT CHECK ────────────────────────────────────────────────────────
     def check_exit(self) -> Optional[str]:
-        """
-        ONLY 3 exit conditions:
-          1. Scheduled 3pm exit
-          2. Profit target hit (after MIN_HOLD_SECONDS_FOR_PROFIT)
-          3. Stop-loss hit
-
-        ALL other exits (VIX absolute, VIX spike, emergency stop file,
-        extreme glitch filter) have been REMOVED.
-        """
         now_t = datetime.now(Config.TIMEZONE).time()
 
-        # ── EXIT 1: Scheduled 3pm exit ────────────────────────────────────
         if now_t >= Config.EXIT_TIME:
             return "Scheduled exit time reached (3:00 PM)"
 
-        # ── Parse entry time ──────────────────────────────────────────────
         now        = datetime.now(Config.TIMEZONE)
         entry_time = self.state.data.get("entry_time")
         if isinstance(entry_time, str):
@@ -1868,7 +1979,6 @@ class Engine:
 
         time_since_entry = (now - entry_time).total_seconds() if entry_time else float('inf')
 
-        # ── Compute current PnL (average 3 snapshots for stability) ───────
         exit_legs = self.state.data.get("algo_legs", {})
         open_syms = [
             leg["symbol"].strip()
@@ -1905,7 +2015,6 @@ class Engine:
             else:
                 pnl_val += (price - leg["entry_price"]) * qty_abs
 
-        # Always keep last_pnl current so next tick has a valid baseline
         self.last_pnl = pnl_val
 
         target_rupee = self.state.data.get("profit_target_rupee", 0.0)
@@ -1919,7 +2028,6 @@ class Engine:
         })
 
         if target_rupee > 0:
-            # ── EXIT 2: Profit target ─────────────────────────────────────
             if pnl_val >= target_rupee:
                 if time_since_entry >= Config.MIN_HOLD_SECONDS_FOR_PROFIT:
                     return f"Profit target reached ₹{pnl_val:,.0f}"
@@ -1935,9 +2043,7 @@ class Engine:
                             ),
                         }
                     )
-                    # Do NOT return — keep checking every tick until hold time met
 
-            # ── EXIT 3: Stop-loss ─────────────────────────────────────────
             if pnl_val <= -target_rupee:
                 return f"Stop loss hit ₹{pnl_val:,.0f}"
 
@@ -2218,6 +2324,7 @@ class TradingApplication:
                         self.token_refreshed_today = False
                         self._last_idle_date       = today_date
 
+                        # PATCHED: reset in-memory entry guard on new day
                         self._entry_attempted         = False
                         self._last_entry_attempt_date = today_date
                         self.logger.info(
@@ -2386,7 +2493,7 @@ class TradingApplication:
                                     self._last_hourly_log = time.time()
 
                         else:
-                            # ── ENTRY LOGIC ───────────────────────────────
+                            # ── ENTRY LOGIC (PATCHED) ─────────────────────
                             if Config.ENTRY_START <= current_time <= Config.ENTRY_END:
 
                                 if today_weekday == 1:
@@ -2398,11 +2505,30 @@ class TradingApplication:
                                     time.sleep(5)
                                     continue
 
+                                # PATCHED: in-memory guard prevents multiple loop
+                                # iterations from calling enter() simultaneously
+                                # during the 90-second entry window.
+                                # The DB gate inside enter() is the authoritative
+                                # lock; this stops unnecessary concurrent calls.
+                                if (self._entry_attempted and
+                                        self._last_entry_attempt_date == today_date):
+                                    self.logger.info(
+                                        "Entry already attempted this session — "
+                                        "skipping (in-memory guard)"
+                                    )
+                                    time.sleep(5)
+                                    continue
+
                                 self.logger.critical("ENTRY WINDOW OPEN — CALLING enter()", {
                                     "current_time": current_time.strftime("%H:%M:%S"),
                                     "start":        Config.ENTRY_START.strftime("%H:%M:%S"),
                                     "end":          Config.ENTRY_END.strftime("%H:%M:%S"),
                                 })
+
+                                # PATCHED: set flag BEFORE calling enter() so no
+                                # re-entry can happen even if enter() is slow
+                                self._entry_attempted         = True
+                                self._last_entry_attempt_date = today_date
 
                                 try:
                                     success = self.engine.enter()
@@ -2522,6 +2648,6 @@ class TradingApplication:
                     "Final heartbeat & is_running=False saved on shutdown"
                 )
             except Exception as e:
-                self.logger.warning(
+                self.logger.warning( 
                     "Failed to save final heartbeat on shutdown", {"error": str(e)}
                 )
